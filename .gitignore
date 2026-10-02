@@ -1,0 +1,19 @@
+# Build output
+bin/
+
+# BepInEx install output, if someone runs the tool from a clone next to the game
+BepInEx/
+
+# Game / BepInEx artefacts, and logs the tool reads for you
+LogOutput.log
+preloader_*.log
+Player.log
+doorstop_config.ini
+winhttp.dll
+.doorstop_version
+unstripped_corlib/
+
+# Editors
+.vs/
+.idea/
+*.user
