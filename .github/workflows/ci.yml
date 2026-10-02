@@ -1,0 +1,70 @@
+name: ci
+
+# Builds and tests the launcher.
+#
+# Unlike the mods, this repo does not need the game: it compiles against the .NET Framework reference
+# assemblies and stages its own Mono.Cecil, so a hosted runner has everything it needs. That is the
+# reason the launcher is a separate repo with its own build rather than a mode of a mod.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and check
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      # The launcher references .NET Framework 4.8, so it needs the targeting pack. setup-dotnet does
+      # not install it; windows-latest ships it with the Visual Studio image, and asking for it here
+      # would only make the build depend on which image happens to be current.
+      - name: Confirm the reference assemblies are present
+        shell: pwsh
+        run: |
+          $root = 'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8'
+          if (-not (Test-Path $root)) {
+            Write-Error "No .NET Framework 4.8 reference assemblies. The runner image needs them."
+          }
+          Write-Host "reference assemblies: $root"
+
+      - name: Build
+        shell: pwsh
+        run: .\build.ps1 -NoCopy
+
+      # Compiling is not a check. The exe is a GUI program, so the useful verification is that it
+      # starts, resolves Mono.Cecil from beside itself, and finds the game - which is also the one
+      # thing that differs between a developer's machine and a fresh clone.
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $exe = '.\bin\ScamWYF.Launcher.exe'
+          if (-not (Test-Path $exe)) { throw "no exe at $exe" }
+          if (-not (Test-Path '.\bin\Mono.Cecil.dll')) { throw 'Mono.Cecil was not copied next to the exe' }
+
+          # Launch and give up if it dies. A WinForms app that throws in its constructor exits
+          # immediately, so surviving two seconds is the assertion.
+          $process = Start-Process $exe -PassThru
+          Start-Sleep -Seconds 4
+          if ($process.HasExited) { throw "the launcher exited immediately (code $($process.ExitCode))" }
+
+          Stop-Process -Id $process.Id -Force
+          Write-Host 'started and stayed up'
+
+      - name: Commit the build output
+        # Uploaded rather than committed: bin\ is generated, and the point here is to have the exact
+        # artefact a release would publish available from the run that verified it.
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScamWYF.Launcher
+          path: bin/
+          if-no-files-found: error

@@ -69,7 +69,7 @@ A preloader crash, before BepInEx starts, goes to `preloader_*.log` instead — 
 ```powershell
 .\build.ps1
 .\build.ps1 -CscDll C:\path\to\csc.dll
-.\build.ps1 -Cecil "C:\...\BepInEx\core\Mono.Cecil.dll"
+.\build.ps1 -Cecil "C:\path\to\Mono.Cecil.dll"
 ```
 
 Roslyn directly, like the other repos here: no NuGet, no `.csproj`, no restore.
@@ -77,10 +77,13 @@ Roslyn directly, like the other repos here: no NuGet, no `.csproj`, no restore.
 **It is a plain .NET Framework WinForms app, and that is a deliberate difference from the mods.** The
 mods compile against the game's own assemblies; this compiles against the .NET Framework 4.8 reference
 assemblies and runs on any Windows with 4.x — no game install, no BepInEx, no Mono. A tool whose job is
-to repair a broken game install cannot share a dependency with the thing it repairs.
+to repair a broken game install cannot share a dependency with the thing it repairs. It also means
+`build.ps1` works on a CI runner, which is why [the workflow](.github/workflows/ci.yml) needs nothing
+special.
 
-The one external dependency is `Mono.Cecil`, taken from the game's `BepInEx\core` and copied next to the
-exe. Reading plugin metadata with Cecil rather than `Assembly.Load` is load-bearing:
+The one external dependency is `Mono.Cecil`, staged in [`vendor\`](vendor/README.md) so the build needs
+no network and no game; the game's own copy is used if there is one. Reading plugin metadata with Cecil
+rather than `Assembly.Load` is load-bearing:
 
 - loading a mod runs its static constructors, and this tool exists partly to delete mods;
 - a loaded assembly is locked, so the file could not then be moved or deleted;
@@ -88,9 +91,24 @@ exe. Reading plugin metadata with Cecil rather than `Assembly.Load` is load-bear
 
 C# 7.3, two files in `bin\`, nothing to install.
 
+## Continuous builds
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request, on a
+hosted Windows runner: build, then start the exe and check it survives, then upload `bin\`.
+
+That is all possible because of the two decisions above — no game needed to build, and Cecil staged
+in-repo. The mods' workflows are two-tiered precisely because they do need the game; see
+[mod-lib's](https://github.com/swyf-modding/mod-lib/blob/main/.github/workflows/ci.yml) for what that
+looks like.
+
 ---
 
 ## Notes
+
+**An explicit path is never second-guessed.** Passing a folder — as an argument or through
+`SWYG_GAME_DIR` — means exactly that folder. It is not quietly replaced by a Steam location that
+happens to exist, because a typo in a path should say "that folder is not a game install" rather than
+succeed somewhere else. Steam is only searched when nothing was specified.
 
 **Mods cannot be changed while the game is running.** BepInEx does not release plugin assemblies when
 it shuts down, so the files stay locked. The buttons disable themselves and the note column says why,

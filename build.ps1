@@ -73,6 +73,11 @@ function Resolve-Cecil {
         throw "No Mono.Cecil at $Explicit"
     }
 
+    # A copy staged next to the sources, which is how a continuous build gets it without a game
+    # install. Checked first so a build agent does not silently pick up a different version.
+    $staged = Join-Path $PSScriptRoot 'vendor\Mono.Cecil.dll'
+    if (Test-Path $staged) { return $staged }
+
     $game = $env:SWYG_GAME_DIR
     $candidates = @()
     if ($game) { $candidates += (Join-Path $game 'BepInEx\core\Mono.Cecil.dll') }
@@ -92,9 +97,14 @@ function Resolve-Cecil {
     throw @"
 Could not find Mono.Cecil.dll.
 
-It is in the game's BepInEx\core. Either install the game and run the setup script, or point at a
-copy:
-  .\build.ps1 -Cecil C:\path\to\Mono.Cecil.dll
+Three ways to get it:
+
+  - the game's BepInEx\core, which is where it comes from when you have the game installed
+  - a copy at vendor\Mono.Cecil.dll, which is where a continuous build stages one
+  - anywhere at all:
+      .\build.ps1 -Cecil C:\path\to\Mono.Cecil.dll
+
+Mono.Cecil is MIT licensed (github.com/jbevain/cecil), so any copy may be redistributed.
 "@
 }
 

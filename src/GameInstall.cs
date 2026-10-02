@@ -134,29 +134,33 @@ namespace ScamWYF.Launcher
         /// </remarks>
         public static GameInstall Resolve(string explicitPath)
         {
-            foreach (var candidate in Candidates(explicitPath))
-            {
-                if (string.IsNullOrWhiteSpace(candidate)) continue;
+            // An explicit path means exactly that path. Nothing else is considered, and it is returned
+            // even when it is not an install: the UI then shows that exact folder and says what is
+            // missing, which is answerable. Substituting a Steam location that happened to exist
+            // would mean quietly working on - or offering to set up - a game the user did not ask
+            // about, and a typo in a path would silently succeed somewhere else entirely.
+            if (!string.IsNullOrWhiteSpace(explicitPath)) return new GameInstall(explicitPath);
 
+            // Same for SWYG_GAME_DIR: it is a person or a build agent naming a folder, so honour it
+            // exactly rather than second-guessing it against the Steam list.
+            var environment = Environment.GetEnvironmentVariable("SWYG_GAME_DIR");
+            if (!string.IsNullOrWhiteSpace(environment)) return new GameInstall(environment);
+
+            var tried = new List<string>();
+            foreach (var candidate in SteamCandidates())
+            {
                 var install = new GameInstall(candidate);
                 if (install.HasGame || install.HasBepInEx || install.HasDoorstop) return install;
+                tried.Add(candidate);
             }
 
-            // Nothing found. Return the first plausible location anyway so the UI can show the paths
-            // it tried, which is more use than an empty string.
-            var fallback = FirstNonEmpty(Candidates(explicitPath));
-            return new GameInstall(fallback ?? "");
+            // Nothing anywhere. Return the first location so the UI can show where it looked, which
+            // is more use than an empty string.
+            return new GameInstall(FirstNonEmpty(tried) ?? "");
         }
 
-        private static IEnumerable<string> Candidates(string explicitPath)
+        private static IEnumerable<string> SteamCandidates()
         {
-            var all = new List<string>();
-            if (!string.IsNullOrWhiteSpace(explicitPath)) all.Add(explicitPath);
-            if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SWYG_GAME_DIR")))
-            {
-                all.Add(Environment.GetEnvironmentVariable("SWYG_GAME_DIR"));
-            }
-
             var names = new[] { "Scam With Your Friends", "Scam With Your Friends Playtest" };
             var roots = new[]
             {
@@ -167,12 +171,12 @@ namespace ScamWYF.Launcher
                 "D:\\SteamLibrary\\steamapps\\common"
             };
 
+            var all = new List<string>();
             foreach (var root in roots)
             {
                 if (string.IsNullOrWhiteSpace(root)) continue;
                 foreach (var name in names) all.Add(System.IO.Path.Combine(root, name));
             }
-
             return all;
         }
 
