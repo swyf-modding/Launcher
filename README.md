@@ -2,6 +2,7 @@
 
 # ScamWYF.Launcher
 
+![license](https://img.shields.io/badge/license-MIT-blue)
 ![last commit](https://img.shields.io/github/last-commit/swyf-modding/Launcher?label=last%20commit&color=blue)
 ![game build](https://img.shields.io/badge/game-v82--playtest-blue)
 ![framework](https://img.shields.io/badge/.NET%20Framework-4.8-blue)
@@ -31,6 +32,7 @@
 - [Project Structure](#project-structure)
 - [Continuous Builds](#continuous-builds)
 - [Security](#security)
+- [License](#license)
 - [Related Projects](#related-projects)
 
 ---
@@ -233,6 +235,15 @@ Please do not publish suspected vulnerabilities or private game data in a public
 This tool runs a PowerShell script and moves files inside your game install. Both are deliberate and
 both are visible — the Setup tab streams the script's own output rather than summarising it — but
 install only releases you trust.
+
+---
+
+## License
+
+MIT — Copyright © 2026 Ras_rap. See [LICENSE](LICENSE).
+
+[`vendor\Mono.Cecil.dll`](vendor/README.md) is a third-party binary under its own MIT licence, and is not
+covered by this one.
 
 ---
 
