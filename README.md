@@ -3,7 +3,6 @@
 # ScamWYF.Launcher
 
 ![license](https://img.shields.io/badge/license-MIT-blue)
-![last commit](https://img.shields.io/github/last-commit/swyf-modding/Launcher?label=last%20commit&color=blue)
 ![game build](https://img.shields.io/badge/game-v82--playtest-blue)
 ![framework](https://img.shields.io/badge/.NET%20Framework-4.8-blue)
 
