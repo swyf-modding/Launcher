@@ -271,8 +271,19 @@ jobs:
           New-Item -ItemType Directory -Force -Path 'bin\Setup' | Out-Null
           Set-Content -Path 'bin\Setup\setup.ps1' -Value $stub
 
+          # A minimal stand-in for a game install, passed as the first argument.
+          #
+          # Needed because the button is enabled only when a game is present as well as when the script
+          # is, and a build agent has no game. HasGame is exactly one File.Exists on the managed
+          # mscorlib, so an empty file is a complete answer to it - and because an explicit path is
+          # taken at face value, nothing else is probed or written.
+          $fake = Join-Path ([System.IO.Path]::GetTempPath()) 'scamwyf-ci-fake-install'
+          $managed = Join-Path $fake 'Scam With Your Friends_Data\Managed'
+          New-Item -ItemType Directory -Force -Path $managed | Out-Null
+          Set-Content -Path (Join-Path $managed 'mscorlib.dll') -Value ''
+
           $exe = '.\bin\ScamWYF.Launcher.exe'
-          $process = Start-Process $exe -PassThru
+          $process = Start-Process $exe -ArgumentList $fake -PassThru
 
           try {
               $deadline = (Get-Date).AddSeconds(25)
@@ -301,7 +312,12 @@ jobs:
               }
               if (-not $repair) { throw 'the Setup tab has no "Set up / repair" button' }
               if (-not $repair.Current.IsEnabled) {
-                  throw '"Set up / repair" is disabled - the stub script was not found beside the exe'
+                  # Two things gate it, and saying which saves the next person a guess.
+                  throw ('"Set up / repair" is disabled. The button needs both a game install and a' +
+                         ' setup script: stub at bin\Setup\setup.ps1 is ' +
+                         $(if (Test-Path 'bin\Setup\setup.ps1') { 'present' } else { 'MISSING' }) +
+                         ', and the fake install at ' + $fake + ' is ' +
+                         $(if (Test-Path (Join-Path $managed 'mscorlib.dll')) { 'present' } else { 'MISSING' }))
               }
 
               $repair.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
@@ -352,6 +368,7 @@ jobs:
               if (-not $process.HasExited) { $process.CloseMainWindow() | Out-Null; Start-Sleep -Milliseconds 800 }
               if (-not $process.HasExited) { $process.Kill() }
               Remove-Item 'bin\Setup' -Recurse -Force -ErrorAction SilentlyContinue
+              Remove-Item $fake -Recurse -Force -ErrorAction SilentlyContinue
           }
 
       - name: Run the Get mods tests
