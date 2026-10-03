@@ -44,6 +44,7 @@
     <SolidColorBrush x:Key="MutedBrush"         Color="{StaticResource MutedColor}" />
     <SolidColorBrush x:Key="BorderBrush"        Color="{StaticResource BorderColor}" />
     <SolidColorBrush x:Key="ButtonFaceBrush"    Color="{StaticResource ButtonFaceColor}" />
+    <SolidColorBrush x:Key="ButtonHoverBrush"   Color="{StaticResource ButtonHoverColor}" />
     <SolidColorBrush x:Key="AccentBrush"        Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="AccentMutedBrush"   Color="{StaticResource AccentMutedColor}" />
     <SolidColorBrush x:Key="GoodBrush"          Color="{StaticResource GoodColor}" />
@@ -108,7 +109,7 @@
                             CornerRadius="4" Margin="3" />
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bar" Property="Background" Value="{StaticResource ButtonHoverColor}" />
+                            <Setter TargetName="Bar" Property="Background" Value="{StaticResource ButtonHoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsDragging" Value="True">
                             <Setter TargetName="Bar" Property="Background" Value="{StaticResource MutedBrush}" />
@@ -179,7 +180,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Face" Property="Background" Value="{StaticResource ButtonHoverColor}" />
+                            <Setter TargetName="Face" Property="Background" Value="{StaticResource ButtonHoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Face" Property="Opacity" Value="0.75" />
@@ -323,7 +324,16 @@
                             <TabPanel IsItemsHost="True" Margin="0,0,0,-1" />
                         </Border>
                         <Border Grid.Row="1" Background="{StaticResource WindowBrush}">
-                            <ContentPresenter ContentSource="SelectedContent" />
+                            <!--
+                                x:Name is not decoration. TabControl finds its selected-content presenter
+                                by this exact name in OnApplyTemplate and uses it to keep SelectedContent
+                                up to date. Without it the content still draws - ContentSource resolves
+                                the alias independently - but SelectedContent stays null, and that is what
+                                UI Automation walks to build the children of the selected tab. So the whole
+                                tab body was invisible to assistive technology and to any UI Automation
+                                client, which is also why hovering it could not be tested.
+                            -->
+                            <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" />
                         </Border>
                     </Grid>
                 </ControlTemplate>

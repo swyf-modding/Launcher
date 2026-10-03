@@ -195,13 +195,29 @@ Then check the three things a build alone would not: that it compiles, that Mono
 the exe, and that it starts **and creates a window**. That last part matters more in WPF than it did in
 WinForms. WPF resolves styles, templates and pack URIs at load time from compiled XAML, so a mistake in a
 `.xaml` file is not a compile error — the build stays green and the window fails to appear when it opens.
-Requiring a real window handle is what catches that, and it is why the CI workflow does this rather than
-leaving it to be noticed.
+Requiring a real window handle is what catches that, and it is why CI does this rather than leaving it to
+be noticed.
 
-Not covered by tests, and honestly so: the views themselves. The tests are about what happens to files on
-disk — zip-slip refused, a checksum mismatch caught, an enable/disable round trip — and the UI is
-presentation over logic that is tested directly. What that leaves untested is layout and interaction, which
-is checked by running it.
+#### What CI checks that a build cannot
+
+Three of them, and all three exist because of how WPF fails:
+
+| Check | Catches |
+|---|---|
+| Window handle after launch | XAML that compiles but will not load — a `StaticResource` that does not resolve, a bad `TargetName` |
+| A `Color` key assigned to a brush-typed property | A trigger whose `Setter` has the wrong value type. It throws **only when the trigger fires**, so on hover, on a scrollbar thumb, or when a control is disabled |
+| Hover every button on every tab | The same class of fault by any other route, and any other trigger that throws on interaction |
+
+The last two are the reason the UI is not simply assumed to work. A screenshot cannot hover anything, and
+a build cannot evaluate a trigger — a green build once shipped a launcher that threw
+`InvalidOperationException` the moment anyone moved the mouse over a button.
+
+The hover pass is best-effort and does not pretend otherwise: it depends on the cursor reaching the
+window, so it warns rather than fails if it managed to hover nothing. The colour/brush check is the
+deterministic one.
+
+Not covered by tests, and honestly so: layout and the appearance of each tab. What is covered is that the
+window builds, that its resources resolve, and that interacting with it does not throw.
 
 Verified against a real install: the probes report `ready`, both installed mods appear with their real
 names and versions, and the log tab picks the BepInEx channel lines out of the raw text.

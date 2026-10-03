@@ -57,6 +57,52 @@ jobs:
         shell: pwsh
         run: .\build.ps1
 
+      # A Color where a Brush belongs compiles, renders, and throws only when a trigger fires - so on
+      # hover, or on a scrollbar thumb, or on a disabled control. Nothing else in this workflow would
+      # notice: the build is green and the window looks right in a screenshot.
+      #
+      # Checked statically instead, because that is the only way to cover the triggers a person has not
+      # happened to touch. Every colour key gets exactly one legitimate use - the Color= attribute of the
+      # brush built from it - so any other use of one is the bug.
+      - name: Check that colours are not used where a brush is required
+        shell: pwsh
+        run: |
+          $theme = Get-Content 'src\Theme.xaml' -Raw
+          $colorKeys = [regex]::Matches($theme, '<Color\s+x:Key="(\w+)"') |
+              ForEach-Object { $_.Groups[1].Value }
+
+          if (-not $colorKeys) { throw 'no <Color> keys found - has the palette been renamed?' }
+
+          $files = @(Get-ChildItem src -Recurse -Filter *.xaml | ForEach-Object { $_.FullName })
+          $bad = @()
+
+          foreach ($file in $files) {
+              $text = Get-Content $file -Raw
+              foreach ($key in $colorKeys) {
+                  # Capture the attribute name each use sits in, so the legitimate
+                  # Color="{StaticResource X}" can be told apart from a misuse.
+                  $pattern = '([\w:.]+)="\{StaticResource\s+' + [regex]::Escape($key) + '\s*}"'
+                  foreach ($m in [regex]::Matches($text, $pattern)) {
+                      if ($m.Groups[1].Value -ne 'Color') {
+                          $line = ($text.Substring(0, $m.Index) -split "`n").Count
+                          $rel = $file.Substring($PWD.Path.Length + 1)
+                          $bad += "$rel line $line : $($m.Groups[1].Value) = {StaticResource $key}"
+                      }
+                  }
+              }
+          }
+
+          if ($bad) {
+              $bad | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+              # Assembled rather than written as a here-string: a here-string's terminator has to sit at
+              # the start of a line, which is a fight with a YAML block scalar's indentation.
+              throw ('A colour key is assigned to a brush-typed property. Add a SolidColorBrush for ' +
+                     'it beside the others and reference that, not the Color directly. WPF does not ' +
+                     'convert Color to Brush at runtime, and it only fails once the trigger fires.')
+          }
+
+          Write-Host "checked $($colorKeys.Count) colour keys across $($files.Count) XAML files"
+
       # Compiling is not a check. The exe is a GUI program, so the useful verification is that it
       # starts, resolves Mono.Cecil from beside itself, and finds the game - which is also the one
       # thing that differs between a developer's machine and a fresh clone.
@@ -88,6 +134,113 @@ jobs:
           Write-Host "window: '$($process.MainWindowTitle)'"
           Stop-Process -Id $process.Id -Force
           Write-Host 'started and stayed up'
+
+      # Sweep the mouse over every button on every tab and fail if the error reporter comes up.
+      #
+      # Best-effort, and deliberately described as such: it depends on the cursor actually reaching the
+      # window, which on a runner depends on there being a desktop session to aim at. If it silently
+      # hovers nothing it passes, so it must never be mistaken for a guarantee. The colour/brush check
+      # above is the deterministic one - this exists for the triggers that are neither, and it did catch
+      # a real one: a Color assigned to a Background threw only on hover, after a green build and a
+      # screenshot that looked right.
+      - name: Hover every button
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public class Hover { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); }
+          '@
+
+          $exe = '.\bin\ScamWYF.Launcher.exe'
+          $process = Start-Process $exe -PassThru
+
+          try {
+              $deadline = (Get-Date).AddSeconds(25)
+              $root = $null
+              while ((Get-Date) -lt $deadline -and -not $root) {
+                  Start-Sleep -Milliseconds 400
+                  $root = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                      [System.Windows.Automation.TreeScope]::Children,
+                      (New-Object System.Windows.Automation.PropertyCondition(
+                          [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id)))
+              }
+              if (-not $root) { throw 'window never appeared' }
+              try { $root.SetFocus() } catch {}
+              Start-Sleep -Seconds 2
+
+              $byType = @{
+                  Tab    = [System.Windows.Automation.ControlType]::TabItem
+                  Button = [System.Windows.Automation.ControlType]::Button
+              }
+
+              function Get-Errors {
+                  $cond = New-Object System.Windows.Automation.PropertyCondition(
+                      [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id)
+                  $found = @()
+                  foreach ($w in [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+                            [System.Windows.Automation.TreeScope]::Children, $cond)) {
+                      if ($w.Current.Name -eq 'Something went wrong') { $found += $w }
+                  }
+                  return $found
+              }
+
+              $tabCond = New-Object System.Windows.Automation.PropertyCondition(
+                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty, $byType.Tab)
+              $btnCond = New-Object System.Windows.Automation.PropertyCondition(
+                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty, $byType.Button)
+
+              $tabs = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $tabCond)
+              $hovered = 0
+
+              for ($t = 0; $t -lt $tabs.Count; $t++) {
+                  # Re-queried each time: the strip is disabled while work is going, and a cached element
+                  # then fails to select.
+                  $selected = $false
+                  for ($attempt = 0; $attempt -lt 4 -and -not $selected; $attempt++) {
+                      $tabs = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $tabCond)
+                      try {
+                          $tabs[$t].GetCurrentPattern(
+                              [System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+                          $selected = $true
+                      } catch { Start-Sleep -Seconds 2 }
+                  }
+                  Start-Sleep -Seconds 2
+
+                  foreach ($b in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $btnCond)) {
+                      $r = $b.Current.BoundingRectangle
+                      if ($r.Width -le 0) { continue }
+
+                      # Off the control first, so IsMouseOver genuinely goes false in between.
+                      [void][Hover]::SetCursorPos([int]($r.X + $r.Width / 2 + 400), [int]($r.Y + $r.Height / 2 + 300))
+                      Start-Sleep -Milliseconds 60
+                      [void][Hover]::SetCursorPos([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2))
+                      Start-Sleep -Milliseconds 220
+                      $hovered++
+
+                      $errs = Get-Errors
+                      if ($errs.Count) {
+                          $lines = $errs[0].FindAll([System.Windows.Automation.TreeScope]::Descendants,
+                              (New-Object System.Windows.Automation.PropertyCondition(
+                                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                                  [System.Windows.Automation.ControlType]::Text)))
+                          foreach ($l in $lines) { Write-Host "    $($l.Current.Name)" -ForegroundColor Red }
+                          throw "hovering '$($b.Current.Name)' on tab $t raised the error dialog"
+                      }
+                  }
+              }
+
+              Write-Host "hovered $hovered controls across $($tabs.Count) tabs with no error dialog"
+              if ($hovered -eq 0) {
+                  Write-Warning 'no buttons were reachable - this pass proved nothing on this runner'
+              }
+          }
+          finally {
+              if (-not $process.HasExited) { $process.CloseMainWindow() | Out-Null; Start-Sleep -Milliseconds 800 }
+              if (-not $process.HasExited) { $process.Kill() }
+          }
 
       - name: Run the Get mods tests
         shell: pwsh
