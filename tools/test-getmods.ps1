@@ -70,7 +70,9 @@ if (-not (Test-Path $refRoot)) { throw "No .NET Framework reference assemblies u
 $csc = Resolve-Csc $CscDll
 $cecil = Resolve-Cecil $Cecil
 
-$outDir = Join-Path $repo 'bin\tests'
+# Deliberately not under bin\. The release packages bin\, and a test binary nested inside it would be
+# swept into the published zip - which is exactly what happened once.
+$outDir = Join-Path $repo 'obj\tests'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $exe = Join-Path $outDir 'GetModsTests.exe'
 

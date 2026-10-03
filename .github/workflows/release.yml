@@ -94,8 +94,27 @@ jobs:
         run: |
           # Both files: the tool is the exe plus the Cecil it reads plugin metadata with, and shipping
           # one without the other gives an exe that dies on startup with a FileNotFoundException.
+          #
+          # Named explicitly rather than zipping bin\*. A wildcard picks up whatever else happens to be
+          # in there - which is how a test binary got into a published zip once - and a release should be
+          # decided by this list, not by the state of a build folder.
+          $expected = @('ScamWYF.Launcher.exe', 'Mono.Cecil.dll')
+
+          foreach ($name in $expected) {
+              $path = Join-Path 'bin' $name
+              if (-not (Test-Path $path)) { throw "not in bin\: $name" }
+          }
+
+          $unexpected = Get-ChildItem bin -Recurse -File |
+              Where-Object { $expected -notcontains $_.Name } |
+              ForEach-Object { $_.FullName }
+
+          if ($unexpected) {
+              throw "bin\ holds files this release does not intend to publish: $($unexpected -join ', ')"
+          }
+
           $zip = "ScamWYF.Launcher-$env:GITHUB_REF_NAME.zip"
-          Compress-Archive -Path bin/* -DestinationPath $zip
+          Compress-Archive -Path ($expected | ForEach-Object { Join-Path 'bin' $_ }) -DestinationPath $zip
           Write-Host "  $zip ($((Get-Item $zip).Length) bytes)"
 
       - uses: softprops/action-gh-release@v2
