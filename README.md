@@ -283,6 +283,10 @@ gives an exe that dies on startup with a `FileNotFoundException`, so the release
 needs a self-hosted runner with the game installed; a `release.yml` there would be a workflow that can
 never succeed.
 
+The mods are cut by hand instead — build, package both DLLs, `gh release create`. The full procedure
+for all five repositories, including the submodule ordering that has to be right, is in
+[RELEASING.md](RELEASING.md).
+
 ---
 
 ## Security
