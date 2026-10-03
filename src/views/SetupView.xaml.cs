@@ -93,13 +93,27 @@ namespace ScamWYF.Launcher.Views
             RunButton.IsEnabled = false;
             OfflineButton.IsEnabled = false;
 
+            // Both callbacks are marshalled, and neither may be simplified back to touching a control
+            // directly.
+            //
+            // They arrive on other threads: each output line from the process's async reader, and the
+            // exit code from the thread SetupRunner started. Reading a DependencyProperty off the
+            // dispatcher throws InvalidOperationException, and an unhandled exception on a thread-pool
+            // thread does not raise a dialog - it terminates the process. That is not a hypothetical:
+            // reading the follow checkbox here is what made "Set up / repair" kill the launcher outright,
+            // after a green build, because nothing else in the pipeline ever ran a script.
             Host.RunSetup(offline,
-                line =>
+                line => OnUi(delegate
                 {
                     Append(line);
-                    if (FollowLog.IsChecked == true) Host.Pump();
-                },
-                exitCode =>
+
+                    // "Follow" means keep the newest line visible. It used to be a call to Pump() after
+                    // every line, which was WinForms' Application.DoEvents: WPF repaints once this
+                    // callback returns, so there is nothing to force, and pumping from inside a
+                    // per-line callback only invites re-entrancy.
+                    if (FollowLog.IsChecked == true) Output.ScrollToEnd();
+                }),
+                exitCode => OnUi(delegate
                 {
                     Append("");
                     Append(exitCode == 0
@@ -108,22 +122,45 @@ namespace ScamWYF.Launcher.Views
 
                     Host.SetBusy(false);
                     Reload();
-                    Host.Pump();
-                });
+                }));
+        }
+
+        /// <summary>
+        /// Run work on the UI thread.
+        /// </summary>
+        /// <remarks>
+        /// The script runner reports from threads of its own, so every callback it is handed goes
+        /// through here. Running inline when already on the dispatcher keeps a burst of output lines in
+        /// order, which a BeginInvoke per line would only preserve by accident.
+        /// </remarks>
+        private void OnUi(Action action)
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                action();
+                return;
+            }
+
+            try
+            {
+                Dispatcher.BeginInvoke(action);
+            }
+            catch (Exception)
+            {
+                // The window closed while the script was still running. There is nobody left to tell.
+            }
         }
 
         private void Append(string line)
         {
-            // Dispatcher because the runner reports from its own thread, and a control can only be
-            // touched from the thread that created it.
-            if (!Dispatcher.CheckAccess())
+            // Belt and braces: every current caller arrives via OnUi, but this is the one method that
+            // writes to the window from script output, so it keeps its own guard rather than trusting
+            // each call site to remember.
+            OnUi(delegate
             {
-                Dispatcher.BeginInvoke(new Action<string>(Append), line);
-                return;
-            }
-
-            Output.AppendText(line + Environment.NewLine);
-            Output.CaretIndex = Output.Text.Length;
+                Output.AppendText(line + Environment.NewLine);
+                Output.CaretIndex = Output.Text.Length;
+            });
         }
     }
 }

@@ -50,10 +50,26 @@ namespace ScamWYF.Launcher
             Show(title, message, DialogSeverity.Error, "OK", null, defaultAccept: true);
         }
 
-        private static bool Show(string title, string message, DialogSeverity severity, string acceptText,
+private static bool Show(string title, string message, DialogSeverity severity, string acceptText,
                                  string cancelText, bool defaultAccept)
         {
-var window = new Window
+            // Marshalled, because a Window has to be created on the dispatcher thread and this is the
+            // one place every confirmation funnels through. Every current caller is already on it, but
+            // the alternative is a modal dialog that throws the moment a future caller is not - and a
+            // dialog is exactly what gets called from a failure path, which is the likeliest place for
+            // that to go wrong.
+            var dispatcher = Application.Current.Dispatcher;
+            if (!dispatcher.CheckAccess())
+            {
+                var answer = false;
+                dispatcher.Invoke(new Action(delegate
+                {
+                    answer = Show(title, message, severity, acceptText, cancelText, defaultAccept);
+                }));
+                return answer;
+            }
+
+            var window = new Window
             {
                 Title = title,
                 Width = 520,

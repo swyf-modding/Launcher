@@ -600,14 +600,21 @@ namespace ScamWYF.Launcher.Views
 
         private void SetBusy(bool busy, string message)
         {
-            _busy = busy;
+            // Marshalled even though every current caller is already on the UI thread. This writes to
+            // three controls and the window's enabled state, and it is the first thing a new caller
+            // reaches for after a worker completes - so it guards itself rather than relying on each
+            // call site remembering.
+            OnUi(delegate
+            {
+                _busy = busy;
 
-            if (message != null) Summary.Text = message;
-            if (message != null) Host.Status(message, true);
+                if (message != null) Summary.Text = message;
+                if (message != null) Host.Status(message, true);
 
-            UpdateButtons();
-            Host.SetBusy(busy);
-            Host.Pump();
+                UpdateButtons();
+                Host.SetBusy(busy);
+                Host.Pump();
+            });
         }
 
         private void Status(string message)
@@ -621,9 +628,14 @@ namespace ScamWYF.Launcher.Views
 
         private void Failed(string message)
         {
-            Summary.Text = message;
-            Host.Status(message, false);
-            Dialogs.Error("Could not install", message);
+            // Marshalled for the same reason as SetBusy: a failure is reported from whichever thread
+            // the work was started on, and this one ends in a modal dialog.
+            OnUi(delegate
+            {
+                Summary.Text = message;
+                Host.Status(message, false);
+                Dialogs.Error("Could not install", message);
+            });
         }
     }
 }

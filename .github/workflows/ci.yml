@@ -242,6 +242,118 @@ jobs:
               if (-not $process.HasExited) { $process.Kill() }
           }
 
+      - name: Run a script through the Setup tab
+        shell: pwsh
+        run: |
+          # Clicks "Set up / repair" for real and checks the process survives it.
+          #
+          # This is the one path where the app does its work on threads it does not own: the script's
+          # output arrives on the process's async reader and the exit code on the worker thread
+          # SetupRunner started. A DependencyProperty read from either of those throws, and an
+          # unhandled exception on a thread-pool thread does not raise a dialog - it ends the process.
+          # So this cannot be checked by looking at the window, and it is not hypothetical: reading one
+          # checkbox on the way past killed the launcher on every setup run, behind a green build.
+          #
+          # A stub script, not the real one. The point is the threading around a run, and the real script
+          # writes to the game install - which a build agent has no business doing.
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+
+          $stub = @(
+              'param([string]$GameDir, [switch]$Offline)',
+              'Write-Output "stub: starting"',
+              'Start-Sleep -Milliseconds 150',
+              'Write-Output "stub: middle"',
+              'Start-Sleep -Milliseconds 150',
+              'Write-Output "stub: done"',
+              'exit 0'
+          )
+          New-Item -ItemType Directory -Force -Path 'bin\Setup' | Out-Null
+          Set-Content -Path 'bin\Setup\setup.ps1' -Value $stub
+
+          $exe = '.\bin\ScamWYF.Launcher.exe'
+          $process = Start-Process $exe -PassThru
+
+          try {
+              $deadline = (Get-Date).AddSeconds(25)
+              $root = $null
+              while ((Get-Date) -lt $deadline -and -not $root) {
+                  Start-Sleep -Milliseconds 400
+                  $root = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                      [System.Windows.Automation.TreeScope]::Children,
+                      (New-Object System.Windows.Automation.PropertyCondition(
+                          [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id)))
+              }
+              if (-not $root) { throw 'window never appeared' }
+              try { $root.SetFocus() } catch {}
+              Start-Sleep -Seconds 2
+
+              $btnCond = New-Object System.Windows.Automation.PropertyCondition(
+                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                  [System.Windows.Automation.ControlType]::Button)
+              $editCond = New-Object System.Windows.Automation.PropertyCondition(
+                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                  [System.Windows.Automation.ControlType]::Edit)
+
+              $repair = $null
+              foreach ($b in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $btnCond)) {
+                  if ($b.Current.Name -eq 'Set up / repair') { $repair = $b }
+              }
+              if (-not $repair) { throw 'the Setup tab has no "Set up / repair" button' }
+              if (-not $repair.Current.IsEnabled) {
+                  throw '"Set up / repair" is disabled - the stub script was not found beside the exe'
+              }
+
+              $repair.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+              Write-Host 'clicked "Set up / repair"'
+
+              # Wait for the completion line, which only appears if every callback made it back to the
+              # UI thread and the run finished.
+              $died = 'the launcher died during the script run'
+
+              $deadline = (Get-Date).AddSeconds(60)
+              $finished = $false
+              while ((Get-Date) -lt $deadline -and -not $finished) {
+                  Start-Sleep -Seconds 2
+                  $process.Refresh()
+
+                  if ($process.HasExited) {
+                      # 0xE0434352 is the CLR's unhandled-exception exit code, and it is what touching
+                      # a control from the script's own thread produces. Naming the exit code turns a
+                      # baffling number into the diagnosis it is.
+                      throw ('{0} (exit 0x{1:X8})' -f $died, $process.ExitCode)
+                  }
+
+                  try {
+                      foreach ($e in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $editCond)) {
+                          try {
+                              $v = $e.GetCurrentPattern(
+                                  [System.Windows.Automation.ValuePattern]::Pattern).Current.Value
+                              if ($v -match 'setup finished|setup reported problems') { $finished = $true }
+                          } catch { }
+                      }
+                  }
+                  catch {
+                      # UI Automation reports a dying window as E_UNEXPECTED rather than as "gone", so a
+                      # crash here would otherwise surface as a baffling COM error. Check what actually
+                      # happened and say that instead.
+                      $process.Refresh()
+                      if ($process.HasExited) {
+                          throw ('{0} (exit 0x{1:X8})' -f $died, $process.ExitCode)
+                      }
+                      throw
+                  }
+              }
+
+              if (-not $finished) { throw 'the script run never reported completion' }
+              Write-Host 'the run streamed its output, completed, and left the launcher running'
+          }
+          finally {
+              if (-not $process.HasExited) { $process.CloseMainWindow() | Out-Null; Start-Sleep -Milliseconds 800 }
+              if (-not $process.HasExited) { $process.Kill() }
+              Remove-Item 'bin\Setup' -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Run the Get mods tests
         shell: pwsh
         run: .\tools\test-getmods.ps1

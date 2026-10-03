@@ -207,17 +207,27 @@ Three of them, and all three exist because of how WPF fails:
 | Window handle after launch | XAML that compiles but will not load — a `StaticResource` that does not resolve, a bad `TargetName` |
 | A `Color` key assigned to a brush-typed property | A trigger whose `Setter` has the wrong value type. It throws **only when the trigger fires**, so on hover, on a scrollbar thumb, or when a control is disabled |
 | Hover every button on every tab | The same class of fault by any other route, and any other trigger that throws on interaction |
+| Run a script through the Setup tab | Touching a control from one of the threads the app does not own |
 
-The last two are the reason the UI is not simply assumed to work. A screenshot cannot hover anything, and
-a build cannot evaluate a trigger — a green build once shipped a launcher that threw
+The last two of those exist because of how WPF fails. A screenshot cannot hover anything, and a build
+cannot evaluate a trigger — so a green build once shipped a launcher that threw
 `InvalidOperationException` the moment anyone moved the mouse over a button.
 
+The script run is the nastier of the two, and worth spelling out. Running `setup.ps1` is the only thing
+this app does on threads it does not control: each output line arrives on the process's async reader and
+the exit code on a worker thread. Reading a `DependencyProperty` from either throws — and an unhandled
+exception on a thread-pool thread does not raise a dialog, it **ends the process**. That is not
+hypothetical: reading one checkbox on the way past killed the launcher on every single setup run. CI now
+runs a script through the tab, against a stub rather than the real one (the point is the threading, and the
+real script writes to the game install), and fails if the process does not survive it.
+
 The hover pass is best-effort and does not pretend otherwise: it depends on the cursor reaching the
-window, so it warns rather than fails if it managed to hover nothing. The colour/brush check is the
-deterministic one.
+window, so it warns rather than fails if it managed to hover nothing. The colour/brush check and the
+script run are the deterministic ones.
 
 Not covered by tests, and honestly so: layout and the appearance of each tab. What is covered is that the
-window builds, that its resources resolve, and that interacting with it does not throw.
+window builds, that its resources resolve, that interacting with it does not throw, and that the one code
+path which crosses threads still works.
 
 Verified against a real install: the probes report `ready`, both installed mods appear with their real
 names and versions, and the log tab picks the BepInEx channel lines out of the raw text.
