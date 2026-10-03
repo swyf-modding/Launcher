@@ -76,6 +76,10 @@ jobs:
           Stop-Process -Id $process.Id -Force
           Write-Host 'started and stayed up'
 
+      - name: Run the Get mods tests
+        shell: pwsh
+        run: .\tools\test-getmods.ps1
+
       - name: Upload the build output
         # Uploaded rather than committed: bin\ is generated, and the point here is to have the exact
         # artefact a release would publish available from the run that verified it.

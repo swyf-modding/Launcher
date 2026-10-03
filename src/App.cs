@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -27,6 +28,7 @@ namespace ScamWYF.Launcher
         // need this instance to exist first. Non-readonly for exactly that reason.
         private SetupTab _setup;
         private ModsTab _mods;
+        private GetModsTab _getMods;
         private LogTab _log;
 
         private readonly TabControl _tabs = new TabControl();
@@ -124,11 +126,13 @@ namespace ScamWYF.Launcher
         {
             _setup = new SetupTab(this);
             _mods = new ModsTab(this);
+            _getMods = new GetModsTab(this);
             _log = new LogTab(this);
 
             _tabs.Dock = DockStyle.Fill;
             _tabs.TabPages.Add(Page("Setup", _setup));
             _tabs.TabPages.Add(Page("Mods", _mods));
+            _tabs.TabPages.Add(Page("Get mods", _getMods));
             _tabs.TabPages.Add(Page("Log", _log));
             _tabs.SelectedIndexChanged += delegate { OnTabShown(); };
             Controls.Add(_tabs);
@@ -165,7 +169,8 @@ namespace ScamWYF.Launcher
             {
                 case 0: _setup.Reload(); break;
                 case 1: _mods.Reload(); break;
-                case 2: _log.Reload(); break;
+                case 2: _getMods.OnTabShown(); break;
+                case 3: _log.Reload(); break;
             }
         }
 

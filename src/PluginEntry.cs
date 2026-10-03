@@ -20,7 +20,7 @@ namespace ScamWYF.Launcher
     public sealed class PluginEntry
     {
         public PluginEntry(string path, bool enabled, string guid, string name, string version,
-            string loadError)
+            string loadError, bool isAssembly)
         {
             Path = path;
             Enabled = enabled;
@@ -28,7 +28,16 @@ namespace ScamWYF.Launcher
             Name = name;
             Version = version;
             LoadError = loadError;
+
+            // Whether Cecil could read the file at all. Kept apart from LoadError because "read it, and it
+            // has no [BepInPlugin]" is not the same kind of problem as "this is not a .NET assembly", and
+            // conflating them means the shared library - which deliberately has no plugin attribute, so
+            // that the chainloader does not try to load it as one - is reported as broken.
+            IsAssembly = isAssembly;
         }
+
+        /// <summary>True when the file is a .NET assembly Cecil could read.</summary>
+        public bool IsAssembly { get; private set; }
 
         /// <summary>Where the file is now. Moving it is how a mod is enabled or disabled.</summary>
         public string Path { get; private set; }

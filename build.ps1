@@ -256,6 +256,17 @@ $references = @(
     (Join-Path $refRoot 'System.Core.dll')
     (Join-Path $refRoot 'System.Drawing.dll')
     (Join-Path $refRoot 'System.Windows.Forms.dll')
+    # For the Get mods tab. All part of .NET Framework itself, not extra downloads: the JSON one reads
+    # GitHub's release listing, the other unpacks a downloaded zip. Newtonsoft is deliberately not used -
+    # it lives in the game's Managed folder, and a tool that repairs a game install must not share a
+    # dependency with the thing it repairs.
+    (Join-Path $refRoot 'System.Web.Extensions.dll')
+    # Both compression assemblies: FileSystem has ZipFile, Compression has the ZipArchive it returns.
+    # Referencing the pair emits CS1701, a version-unification note between the reference assemblies and
+    # what FileSystem was compiled against. It is benign on .NET Framework 4.8, where both versions are
+    # present, and there is no way to reference one without it.
+    (Join-Path $refRoot 'System.IO.Compression.dll')
+    (Join-Path $refRoot 'System.IO.Compression.FileSystem.dll')
     $cecil
 )
 

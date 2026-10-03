@@ -58,11 +58,20 @@ namespace ScamWYF.Launcher
         private static PluginEntry Read(string path, bool enabled)
         {
             string guid = null, name = null, version = null, problem = null;
+            var isAssembly = false;
 
             try
             {
                 using (var assembly = AssemblyDefinition.ReadAssembly(path))
                 {
+                    isAssembly = true;
+
+                    // A file with no [BepInPlugin] - the shared library is the one that ships - still has a
+                    // version, in the assembly's own attributes. Reading it means the Mods tab and the
+                    // install confirmation can show a version for it rather than a blank, which otherwise
+                    // reads as though something were missing.
+                    version = InformationalVersion(assembly) ?? assembly.Name.Version.ToString();
+
                     foreach (var type in AllTypes(assembly.MainModule.Types))
                     {
                         foreach (var attribute in type.CustomAttributes)
@@ -89,10 +98,46 @@ namespace ScamWYF.Launcher
 
             if (problem == null && guid == null)
             {
-                problem = "no [BepInPlugin] attribute, so BepInEx will not load it";
+                // Accurate rather than reassuring: BepInEx genuinely will not load this, and for the shared
+                // library that is the intent - it must not be loaded as a plugin. Saying so is more useful
+                // than "unrecognised", and naming the case stops it reading as a fault.
+                problem = "no [BepInPlugin] attribute, so BepInEx will not load it as a mod " +
+                          "(the shared library is deliberately like this)";
             }
 
-            return new PluginEntry(path, enabled, guid, name, version, problem);
+            return new PluginEntry(path, enabled, guid, name, version, problem, isAssembly);
+        }
+
+        /// <summary>
+        /// AssemblyInformationalVersion, which is the field the build stamps the git tag into.
+        /// </summary>
+        /// <remarks>
+        /// Preferred over AssemblyVersion because that one is numeric only: a prerelease tag loses its
+        /// name there, so "1.2.0" and "1.2.0-rc1" would be indistinguishable.
+        /// </remarks>
+        private static string InformationalVersion(AssemblyDefinition assembly)
+        {
+            try
+            {
+                foreach (var attribute in assembly.CustomAttributes)
+                {
+                    if (attribute.AttributeType.FullName != "System.Reflection.AssemblyInformationalVersionAttribute")
+                    {
+                        continue;
+                    }
+
+                    if (attribute.ConstructorArguments.Count < 1) return null;
+
+                    var value = attribute.ConstructorArguments[0].Value as string;
+                    if (!string.IsNullOrEmpty(value)) return value;
+                }
+            }
+            catch (Exception)
+            {
+                // A version is a nicety. Never let reading one turn a listed file into a failed scan.
+            }
+
+            return null;
         }
 
         /// <summary>Types in the module and in every namespace, since BepInEx looks in all of them.</summary>

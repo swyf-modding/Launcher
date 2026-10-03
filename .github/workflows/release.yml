@@ -54,6 +54,13 @@ jobs:
         shell: pwsh
         run: .\build.ps1 -NoCopy
 
+      # Cheap, offline, and the kind of thing that should never be discovered during a release. The
+      # install path is the only part of this tool that downloads and writes code, so its defences are
+      # worth checking on the exact commit being published rather than on whatever was last pushed.
+      - name: Run the Get mods tests
+        shell: pwsh
+        run: .\tools\test-getmods.ps1
+
       # Stamping the version is the whole point of building from a tag, so it is checked rather than
       # assumed. A binary whose version does not match its tag is worse than no release.
       #

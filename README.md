@@ -28,6 +28,7 @@
   - [Usage](#usage)
   - [Testing](#testing)
 - [Compatibility](#compatibility)
+- [Installing Mods](#installing-mods)
 - [Safety](#safety)
 - [Project Structure](#project-structure)
 - [Continuous Builds](#continuous-builds)
@@ -233,10 +234,78 @@ src/
 |-- PluginScanner.cs   Reading [BepInPlugin] metadata with Cecil
 |-- PluginEntry.cs     One mod on disk
 |-- ModsTab.cs         The Mods tab
+|-- Http.cs            The only code that touches the network: https only, redirects checked by hand
+|-- ModCatalogue.cs    The known mods, and what GitHub says their latest release is
+|-- ModInstaller.cs    Download, unpack, verify, and only then install
+|-- GetModsTab.cs      The Get mods tab
 `-- LogTab.cs          The Log tab
 build.ps1              Compiles with raw csc
+tools/
+`-- test-getmods.ps1   Tests for the above: -Online also exercises a real download
+tests/                 GetModsTests.cs (offline) and OnlineModTests.cs (needs network)
 vendor/                Mono.Cecil, staged and pinned
 ```
+
+---
+
+## Installing Mods
+
+**Get mods** is a separate tab from **Mods** on purpose. The Mods tab is bookkeeping over files already
+on disk and never touches the network. This one downloads code that the game will execute, so it says
+what it is doing and asks before it does anything.
+
+**From the list.** *Check for updates* asks GitHub for the latest release of each project and shows the
+tag, the size, and whether it is already installed. *Install* downloads the release's zip, unpacks it,
+reads each file's metadata, and shows you exactly what will be written:
+
+```text
+AI Backend  v1.0.0
+
+  Scam WYF AI Backend  1.0.0+g2ac00c8
+    -> BepInEx\plugins\ScamWYF.AiBackend.dll
+  ScamWYF.Modding.Core.dll  1.0.0+g2ac00c8
+    -> BepInEx\core\ScamWYF.Modding.Core.dll
+
+Files come from ScamWYF.AiBackend-v1.0.0.zip on GitHub, 56.4 KB.
+SHA-256 22792e5162396844820a27ed9c846c20ea9f098262a92d9fa164523f2c4fada0
+```
+
+The version shown is read **out of each file**, not taken from the URL — that is the version that will
+actually load. Replacing something already installed gets a second confirmation, and there is no undo.
+
+**From a URL.** For anything not on the list. Paste an `https` link to a `.dll` or a `.zip`. The host is
+named in the confirmation, because unlike the list there is nothing curated behind it. A `.zip` has each
+dll placed by whether it carries a `[BepInPlugin]`: with one goes to `plugins`, without one goes to
+`core`.
+
+### What it refuses, and why
+
+| Refused | Because |
+|---|---|
+| `http://` | A mod is code the game runs. Plain HTTP can be replaced in transit, and there is no signature to notice afterwards |
+| A redirect to `http://` | Followed by hand rather than by the framework, so a downgrade is caught rather than obeyed |
+| `file://`, or a URL with a username | That is not a download; it is a local file read |
+| A zip entry named `../something` | Zip-slip. Every entry's resolved path is checked before it is written, so an archive cannot escape the temp folder |
+| A file over 32 MB | The largest thing here should be a 60 KB zip. Checked from the header, so it fails before a byte is written |
+| A file that is not a .NET assembly | Checked with Cecil, the same reader the Mods tab uses |
+| A mod with no `[BepInPlugin]` | BepInEx would not load it. The shared library is the exception, and it routes to `core` precisely so that is not a problem |
+| A download that fails its checksum | Discarded, and nothing is installed |
+
+Nothing is ever **loaded** to find out what a file is — only read as metadata. A mod's static
+constructors do not run in this process.
+
+### What the checksum is and is not
+
+GitHub publishes a SHA-256 for each release asset, and a mismatch discards the download. That catches a
+truncated or corrupted download, and an asset host that is not GitHub's.
+
+It is **not** a signature, and it does not make a mod safe: the digest comes from the same place as the
+file. Nothing here can tell you whether a mod is malicious. The tab says so where you will read it.
+
+### Rate limits
+
+The GitHub API allows 60 unauthenticated requests an hour per address, and one lookup per known mod.
+Hitting it says so, rather than reporting a generic failure.
 
 ---
 
