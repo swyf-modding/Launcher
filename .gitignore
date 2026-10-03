@@ -1,6 +1,10 @@
 # Build output
 bin/
 
+# Generated assembly attributes, written by build.ps1 from the git tag. Deliberately not committed:
+# a checked-in copy is the version drift this replaced.
+obj/
+
 # vendor\Mono.Cecil.dll is deliberately NOT ignored: the launcher stages its own Cecil so a build
 # works with no game installed, and pinning the version means a release cannot ship against a
 # different one than it was tested with. See vendor\README.md.

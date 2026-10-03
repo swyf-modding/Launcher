@@ -14,15 +14,21 @@
         .\build.ps1
         .\build.ps1 -CscDll C:\path\to\csc.dll
         .\build.ps1 -Cecil "C:\...\BepInEx\core\Mono.Cecil.dll"
+        .\build.ps1 -Version 1.2.3
 
     Mono.Cecil is the one external dependency, and it is the same copy the game already loads, so
     there is nothing extra to distribute: it is found in BepInEx\core and copied next to the exe.
     Point -Cecil at it if your game lives somewhere unusual.
+
+    The version is taken from the nearest git tag, so a released build says which commit it came from
+    without anyone having to remember to edit a number in a source file. -Version overrides that, which
+    is what a build from a source archive with no .git needs.
 #>
 [CmdletBinding()]
 param(
     [string]$CscDll,
     [string]$Cecil,
+    [string]$Version,
     [switch]$NoCopy
 )
 
@@ -110,15 +116,133 @@ Mono.Cecil is MIT licensed (github.com/jbevain/cecil), so any copy may be redist
 
 $cecil = Resolve-Cecil $Cecil
 
+# ---------------------------------------------------------------- version
+
+# A released binary should be able to say where it came from. The version is read from the nearest git
+# tag rather than typed into a source file, because a number in a source file drifts: the READMEs and
+# the [BepInPlugin] attributes all showed 1.0.0 long after the dll changed, and the launcher reads
+# those attributes back out to show the user, so a stale one is not merely untidy - it is visible.
+#
+# AssemblyVersion and AssemblyFileVersion must be numeric, because the CLR rejects "1.0.0-beta.1" and
+# would fail the build over a prerelease tag. So a prerelease keeps its numeric part there and carries
+# the rest in AssemblyInformationalVersion - which is the field Explorer and Programs and Features
+# actually display, so this is what a player sees.
+function ConvertFrom-Describe {
+    param([string]$Describe, [string]$Sha)
+
+    if ([string]::IsNullOrWhiteSpace($Describe)) { $Describe = '0.0.0' }
+
+    $dirty = $Describe.EndsWith('-dirty')
+    if ($dirty) { $Describe = $Describe.Substring(0, $Describe.Length - '-dirty'.Length) }
+
+    # Strip "-<n>-g<sha>" from the right first, then split what is left on its first '-'. Doing it in
+    # that order is the whole trick: "v1.1.0-beta.2-1-g9925471" has a dash inside the prerelease, so
+    # splitting first would read the tag as "v1.1.0" and lose "beta.2".
+    $commits = 0
+    $distance = [regex]::Match($Describe, '-(?<n>\d+)-g(?<sha>[0-9a-fA-F]+)$')
+    if ($distance.Success) {
+        $commits = [int]$distance.Groups['n'].Value
+        if (-not $Sha) { $Sha = $distance.Groups['sha'].Value }
+        $Describe = $Describe.Substring(0, $distance.Index)
+    }
+
+    # Build metadata on the tag itself is dropped, because this function appends its own commit and
+    # two "+" separators would make the result malformed. Git allows "+" in a tag name, so this is a
+    # real if unusual input rather than a theoretical one.
+    $plus = $Describe.IndexOf('+')
+    if ($plus -ge 0) { $Describe = $Describe.Substring(0, $plus) }
+
+    $tag = $Describe
+    $prerelease = ''
+    $dash = $tag.IndexOf('-')
+    if ($dash -ge 0) {
+        $prerelease = $tag.Substring($dash + 1)
+        $tag = $tag.Substring(0, $dash)
+    }
+    if ($tag -match '^[vV]') { $tag = $tag.Substring(1) }
+
+    # Anything not dot-separated integers is not a version we can stamp: an untagged tree, or a tag
+    # like "nightly". Both fall back to 0.0.0 and are marked, rather than failing the build. Up to four
+    # components are accepted because AssemblyVersion takes four.
+    $numbers = @()
+    if ($tag -match '^\d+(\.\d+){0,3}$') {
+        foreach ($part in ($tag -split '\.')) { $numbers += [int]$part }
+    }
+    $untagged = $numbers.Count -eq 0
+    if ($untagged) { $numbers = @(0, 0, 0) }
+    while ($numbers.Count -lt 3) { $numbers += 0 }
+    $numeric = $numbers -join '.'
+
+    $informational = $numeric
+    if ($prerelease) { $informational += "-$prerelease" }
+
+    $meta = @()
+    if ($untagged) { $meta += 'untagged' }
+    if ($commits -gt 0) { $meta += "$commits" }
+    if ($Sha) { $meta += "g$Sha" }
+    if ($dirty) { $meta += 'dirty' }
+    if ($meta.Count) { $informational += '+' + ($meta -join '.') }
+
+    [pscustomobject]@{
+        Numeric        = $numeric
+        Informational = $informational
+        Commit         = $Sha
+        Dirty          = $dirty
+        Untagged       = $untagged
+    }
+}
+
+function Resolve-Version {
+    param([string]$Explicit)
+
+    if ($Explicit) {
+        # An explicit -Version is taken at face value for the numeric part, so -Version 1.2.3-beta.1
+        # stamps 1.2.3 into AssemblyVersion and keeps the prerelease where a person can see it.
+        return ConvertFrom-Describe $Explicit ''
+    }
+
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Warning "git was not found, so the version cannot be read from a tag. Pass -Version to stamp one."
+        return ConvertFrom-Describe '0.0.0' ''
+    }
+
+    $root = & git -C $PSScriptRoot rev-parse --show-toplevel 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $root) {
+        Write-Warning "Not a git checkout, so the version cannot be read from a tag. Pass -Version to stamp one."
+        return ConvertFrom-Describe '0.0.0' ''
+    }
+
+    # --always so an untagged tree still describes rather than failing, and --dirty so a build from a
+    # modified tree cannot be mistaken for a release.
+    $describe = & git -C $PSScriptRoot describe --tags --dirty --always 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $describe) {
+        Write-Warning "git describe failed, so the version could not be read. Pass -Version to stamp one."
+        return ConvertFrom-Describe '0.0.0' ''
+    }
+
+    $sha = & git -C $PSScriptRoot rev-parse --short HEAD 2>$null
+    return ConvertFrom-Describe $describe.Trim() "$($sha.Trim())"
+}
+
+$versionInfo = Resolve-Version $Version
+if ($versionInfo.Dirty) {
+    Write-Host "  note: the working tree has uncommitted changes, so this is not a clean release build." -ForegroundColor Yellow
+}
+
 # ---------------------------------------------------------------- references
 
 # The .NET Framework reference assemblies, so the compiler sees exactly what any Windows with
 # .NET Framework 4.x will see. Compiling against the GAC instead would work on this machine and then
 # fail on a player's, which is the failure mode worth spending two lines to avoid.
-$refRoot = Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8'
+$frameworkBase = Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies\Microsoft\Framework\.NETFramework'
+$refRoot = Join-Path $frameworkBase 'v4.8'
 if (-not (Test-Path $refRoot)) {
-    $found = Get-ChildItem (Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies\Microsoft\Framework\.NETFramework') `
-        -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+    # Sorted by parsed version rather than by name: a name sort puts v4.9 above v4.10, and would
+    # happily pick an older reference assembly than the one already on the machine.
+    $found = Get-ChildItem $frameworkBase -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^v(\d+)\.(\d+)' } |
+        Sort-Object { [version]$_.Name.TrimStart('v') } -Descending |
+        Select-Object -First 1
     if ($found) { $refRoot = $found.FullName }
 }
 
@@ -143,7 +267,28 @@ foreach ($r in $references) {
 
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-$sources = Get-ChildItem (Join-Path $PSScriptRoot 'src') -Filter *.cs | ForEach-Object { $_.FullName }
+# Generated rather than committed, because it is derived from the tag and a stale copy checked in next
+# to the sources is exactly the drift this replaces. obj\ is gitignored.
+$objDir = Join-Path $PSScriptRoot 'obj'
+New-Item -ItemType Directory -Force -Path $objDir | Out-Null
+$assemblyInfo = Join-Path $objDir 'AssemblyInfo.g.cs'
+
+@"
+// Generated by build.ps1 from the git tag. Do not edit, and do not commit - this file is obj\.
+[assembly: System.Reflection.AssemblyTitle("ScamWYF.Launcher")]
+[assembly: System.Reflection.AssemblyProduct("ScamWYF.Launcher")]
+[assembly: System.Reflection.AssemblyCompany("")]
+[assembly: System.Reflection.AssemblyCopyright("Copyright (c) 2026 Ras_rap")]
+[assembly: System.Reflection.AssemblyConfiguration("")]
+[assembly: System.Reflection.AssemblyVersion("$($versionInfo.Numeric)")]
+[assembly: System.Reflection.AssemblyFileVersion("$($versionInfo.Numeric)")]
+[assembly: System.Reflection.AssemblyInformationalVersion("$($versionInfo.Informational)")]
+"@ | Set-Content -LiteralPath $assemblyInfo -Encoding UTF8
+
+$sources = @(
+    Get-ChildItem (Join-Path $PSScriptRoot 'src') -Filter *.cs | ForEach-Object { $_.FullName }
+    $assemblyInfo
+)
 if (-not $sources) { throw "No sources in src\" }
 
 $args = @(
@@ -152,6 +297,9 @@ $args = @(
     '-nostdlib+'
     '-langversion:7.3'
     '-optimize+'
+    # Deterministic so the same commit compiles to the same bytes, which is what makes it meaningful to
+    # publish a build and say afterwards which commit it came from.
+    '-deterministic+'
     '-warnaserror-'
     '-warn:4'
     '-define:RELEASE'
@@ -164,6 +312,7 @@ Write-Host "=== building ScamWYF.Launcher"
 Write-Host "  compiler:  $csc"
 Write-Host "  cecil:     $cecil"
 Write-Host "  framework: $refRoot"
+Write-Host "  version:   $($versionInfo.Informational)"
 
 if ($csc -like '*.dll') {
     & dotnet $csc @args

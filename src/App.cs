@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -56,7 +57,7 @@ namespace ScamWYF.Launcher
             Mods = new ModManager(Install.BepInExCore);
             Setup = new SetupRunner(FindSetupScript());
 
-            Text = "Scam With Your Friends - modding";
+            Text = "Scam With Your Friends - modding " + BuildVersion();
             MinimumSize = new Size(880, 560);
             Size = new Size(940, 640);
             StartPosition = FormStartPosition.CenterScreen;
@@ -94,6 +95,29 @@ namespace ScamWYF.Launcher
             }
 
             return beside;
+        }
+
+        /// <summary>
+        /// This build's version, for the title bar.
+        /// </summary>
+        /// <remarks>
+        /// The informational version, not the assembly version, because build.ps1 fills the former from
+        /// the git tag and it carries the commit - "which launcher are you on" is a support question
+        /// and the commit is the answer. Falls back to the assembly version, which is all a build with
+        /// no tag behind it has.
+        /// </remarks>
+        private static string BuildVersion()
+        {
+            var assembly = typeof(App).Assembly;
+
+            var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+            if (informational != null && !string.IsNullOrEmpty(informational.InformationalVersion))
+            {
+                return informational.InformationalVersion;
+            }
+
+            var version = assembly.GetName().Version;
+            return version != null ? version.ToString() : "unknown version";
         }
 
         private void Build()

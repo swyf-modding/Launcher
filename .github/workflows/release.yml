@@ -1,0 +1,98 @@
+name: release
+
+# Publishes a release when a version tag is pushed.
+#
+# The launcher is the one project here that can be released without a game install, so this is fully
+# automated: a hosted runner builds it, and the tag is the version. Pushing v1.2.3 produces a release
+# whose binaries report 1.2.3 and name the commit they came from.
+#
+# It rebuilds rather than reusing the artefact from ci.yml, on purpose. Artefacts expire after 90 days
+# and tags do not, so a release driven from an artefact would one day silently have nothing to publish.
+# The build is deterministic, so the bytes are the same either way.
+#
+# The mods cannot use this workflow: they compile against the game's own assemblies, so their build
+# needs a self-hosted runner with the game installed.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: windows-latest
+
+    steps:
+      # fetch-depth 0 for the tags. A shallow clone has no tag refs, and without them build.ps1 falls
+      # back to 0.0.0+untagged and stamps a released binary with a version nobody can trace.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Confirm the tag and the commit agree
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $describe = (& git describe --tags --dirty --always).Trim()
+
+          if ($describe -ne $tag) {
+            throw "HEAD describes as '$describe', not '$tag'. The tag is not on this commit."
+          }
+          if ($describe -like '*-dirty') {
+            throw "The working tree is dirty. A release must be built from a committed tree."
+          }
+          Write-Host "  $tag -> $describe"
+
+      - name: Build
+        shell: pwsh
+        run: .\build.ps1 -NoCopy
+
+      # Stamping the version is the whole point of building from a tag, so it is checked rather than
+      # assumed. A binary whose version does not match its tag is worse than no release.
+      #
+      # Compared against both fields, because they deliberately differ on a prerelease tag: v1.2.3-rc1
+      # stamps FileVersion 1.2.3, since the CLR rejects a prerelease there, and carries the "rc1" in
+      # ProductVersion. Checking FileVersion against the whole tag would fail every prerelease.
+      - name: Confirm the binary reports the tag's version
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME              # v1.2.3, or v1.2.3-rc1
+          $bare = $tag.TrimStart('v')              # 1.2.3, or 1.2.3-rc1
+          $numeric = ($bare -split '-')[0]         # 1.2.3 either way
+
+          $exe = '.\bin\ScamWYF.Launcher.exe'
+          if (-not (Test-Path $exe)) { throw "no exe at $exe" }
+          if (-not (Test-Path '.\bin\Mono.Cecil.dll')) { throw 'Mono.Cecil was not copied next to the exe' }
+
+          $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $exe))
+          Write-Host "  AssemblyVersion: $($info.FileVersion)"
+          Write-Host "  ProductVersion: $($info.ProductVersion)"
+
+          if ($info.FileVersion -ne $numeric) {
+              throw "The binary's numeric version is $($info.FileVersion), but the tag says $numeric."
+          }
+          if ($info.ProductVersion -notlike "$bare+*") {
+              throw "The binary's full version is '$($info.ProductVersion)', which does not name $bare and a commit."
+          }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          # Both files: the tool is the exe plus the Cecil it reads plugin metadata with, and shipping
+          # one without the other gives an exe that dies on startup with a FileNotFoundException.
+          $zip = "ScamWYF.Launcher-$env:GITHUB_REF_NAME.zip"
+          Compress-Archive -Path bin/* -DestinationPath $zip
+          Write-Host "  $zip ($((Get-Item $zip).Length) bytes)"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ScamWYF.Launcher-${{ github.ref_name }}.zip
+          generate_release_notes: true
+          draft: false

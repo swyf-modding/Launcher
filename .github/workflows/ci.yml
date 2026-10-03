@@ -26,16 +26,32 @@ jobs:
           dotnet-version: '10.x'
 
       # The launcher references .NET Framework 4.8, so it needs the targeting pack. setup-dotnet does
-      # not install it; windows-latest ships it with the Visual Studio image, and asking for it here
-      # would only make the build depend on which image happens to be current.
+      # not install it; windows-latest ships it with the Visual Studio image.
+      #
+      # The check resolves the pack the same way build.ps1 does rather than demanding v4.8 exactly, so
+      # the two cannot disagree: a stricter check here fails a build that would have succeeded, and
+      # reports it as a missing toolchain when the real problem is this file.
       - name: Confirm the reference assemblies are present
         shell: pwsh
         run: |
-          $root = 'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8'
-          if (-not (Test-Path $root)) {
-            Write-Error "No .NET Framework 4.8 reference assemblies. The runner image needs them."
+          $base = 'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework'
+          $found = $null
+
+          if (Test-Path (Join-Path $base 'v4.8')) {
+              $found = Join-Path $base 'v4.8'
+          } elseif (Test-Path $base) {
+              # Highest version present. Sorted by parsed Version rather than by name, because a name
+              # sort puts v4.9 above v4.10.
+              $found = Get-ChildItem $base -Directory |
+                  Where-Object { $_.Name -match '^v(\d+)\.(\d+)' } |
+                  Sort-Object { [version]($_.Name.TrimStart('v')) } -Descending |
+                  Select-Object -First 1 -ExpandProperty FullName
           }
-          Write-Host "reference assemblies: $root"
+
+          if (-not $found) {
+              Write-Error "No .NET Framework 4.x reference assemblies under $base. The runner image needs them."
+          }
+          Write-Host "reference assemblies: $found"
 
       - name: Build
         shell: pwsh
@@ -60,7 +76,7 @@ jobs:
           Stop-Process -Id $process.Id -Force
           Write-Host 'started and stayed up'
 
-      - name: Commit the build output
+      - name: Upload the build output
         # Uploaded rather than committed: bin\ is generated, and the point here is to have the exact
         # artefact a release would publish available from the run that verified it.
         uses: actions/upload-artifact@v4

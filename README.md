@@ -3,6 +3,7 @@
 # ScamWYF.Launcher
 
 ![license](https://img.shields.io/badge/license-MIT-blue)
+![version](https://img.shields.io/github/v/release/swyf-modding/Launcher?label=version)
 ![game build](https://img.shields.io/badge/game-v82--playtest-blue)
 ![framework](https://img.shields.io/badge/.NET%20Framework-4.8-blue)
 
@@ -30,6 +31,7 @@
 - [Safety](#safety)
 - [Project Structure](#project-structure)
 - [Continuous Builds](#continuous-builds)
+- [Releases](#releases)
 - [Security](#security)
 - [License](#license)
 - [Related Projects](#related-projects)
@@ -46,7 +48,7 @@ Your Friends**. Three tabs: fix the install, manage mods, read the log.
 - **Diagnoses a partial install.** Reports the game, loader, corlib override, its wiring and BepInEx as
   separate checks, because a half-installed game is the case that matters and "not installed" is not a
   useful answer to it
-- **Runs the real setup script.** Delegates to [Setup](../Setup)'s `setup.ps1` and streams its
+- **Runs the real setup script.** Delegates to [Setup](https://github.com/swyf-modding/Setup)'s `setup.ps1` and streams its
   output live, rather than reimplementing it in a button handler
 - **Lists and manages mods.** Every dll in `plugins` and `plugins_disabled`, read from `[BepInPlugin]`
   metadata, with enable, disable and delete
@@ -76,11 +78,11 @@ This project is not affiliated with or endorsed by the developers or publisher o
   [Compatibility](#compatibility)
 - Windows x64 with .NET Framework 4.8 or later — preinstalled on Windows 10 and 11, and **all the
   launcher needs**. No game-side runtime, no Mono, no .NET SDK to run it
-- [Setup](../Setup) alongside it, for the Setup tab
+- [Setup](https://github.com/swyf-modding/Setup) alongside it, for the Setup tab
 
 ### Installation
 
-1. Clone [Setup](../Setup) next to the launcher, so its scripts and vendored binaries are found:
+1. Clone [Setup](https://github.com/swyf-modding/Setup) next to the launcher, so its scripts and vendored binaries are found:
 
    ```text
    Launcher\bin\ScamWYF.Launcher.exe
@@ -99,6 +101,7 @@ cd Launcher
 .\build.ps1
 .\build.ps1 -NoCopy        # build without installing
 .\build.ps1 -Cecil C:\path\to\Mono.Cecil.dll
+.\build.ps1 -Version 1.2.3 # stamp a version rather than reading the tag
 ```
 
 Roslyn directly, like the other projects here: no NuGet, no `.csproj`, no restore.
@@ -111,6 +114,28 @@ share a dependency with the thing it repairs.
 The one external dependency is [Mono.Cecil](vendor/README.md), staged in `vendor\` so the build needs
 neither network nor game, and pinned rather than floating so a release cannot ship against a different
 Cecil than the one it was tested with.
+
+The build is deterministic: the same commit compiles to the same bytes, which is what makes it worth
+saying afterwards exactly which commit a published binary came from.
+
+#### Versioning
+
+`build.ps1` reads the version from the nearest git tag and stamps it into the assembly. Nothing to edit
+by hand, so the number cannot drift from the code:
+
+| | |
+|---|---|
+| `AssemblyVersion`, `AssemblyFileVersion` | `1.2.3` — numeric, because the CLR rejects a prerelease here |
+| `AssemblyInformationalVersion` | `1.2.3+g0a1b2c3` — what Explorer and Programs and Features show |
+| Window title | the same string, so a user can read their version off the screenshot |
+
+`git describe` decides the rest: a commit past the tag adds `+3.g0a1b2c3`, a prerelease tag keeps its
+name (`v1.2.3-rc1` → `1.2.3-rc1+g0a1b2c3`), and an uncommitted tree is reported as `.dirty` and warned
+about, so a local build cannot be mistaken for a release. With no tags at all the version is
+`0.0.0+untagged.g0a1b2c3`, which says so rather than claiming to be 1.0.0.
+
+Two fallbacks, because a build has to work outside a checkout: no `git`, or no `.git\`, warns and
+stamps `0.0.0`; `-Version` sets the version outright, which is what a build from a source archive needs.
 
 ### Usage
 
@@ -226,6 +251,40 @@ in-repo. The mods' workflows are two-tiered precisely because they do need the g
 
 ---
 
+## Releases
+
+Publishing is one command, because this is the one repo here that needs no game to build:
+
+```powershell
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) builds the tagged commit, packages
+`bin\` into `ScamWYF.Launcher-v1.2.3.zip` and publishes it as a GitHub release with generated notes.
+
+Three checks stand between a tag and a published binary, because a wrong version in a release is worse
+than no release:
+
+| Check | Fails when |
+|---|---|
+| Tag on the commit | `git describe` does not report the tag — the tag points somewhere unexpected |
+| Clean tree | the build has uncommitted changes in it |
+| Version matches | the binary's stamped version is not the tag, or does not name a commit |
+
+It **rebuilds** rather than reusing the `ci.yml` artefact, on purpose: artefacts expire after 90 days
+and tags do not, so a release driven from an artefact would one day have nothing to publish. The build
+is deterministic, so the bytes are the same either way.
+
+The zip holds both files — the exe and `Mono.Cecil.dll` beside it. Shipping one without the other
+gives an exe that dies on startup with a `FileNotFoundException`, so the release step checks for both.
+
+**The mods cannot use this workflow.** They compile against the game's own assemblies, so their release
+needs a self-hosted runner with the game installed; a `release.yml` there would be a workflow that can
+never succeed.
+
+---
+
 ## Security
 
 Please do not publish suspected vulnerabilities or private game data in a public issue, and do not paste
@@ -250,7 +309,7 @@ covered by this one.
 
 | Project | What it is |
 |---|---|
-| [Setup](../Setup) | The scripts the Setup tab runs: BepInEx, the corlib override, the vtable patches |
-| [mod-lib](../mod-lib) | Shared library: base class, menu, config editor, hot reload, patch coordinator |
-| [Mod-Handler](../Mod-Handler) | The in-game **Plugins** tab — turn mods off without leaving a session |
-| [AI-Backend](../AI-Backend) | Routes the game's AI calls to your own LLM |
+| [Setup](https://github.com/swyf-modding/Setup) | The scripts the Setup tab runs: BepInEx, the corlib override, the vtable patches |
+| [mod-lib](https://github.com/swyf-modding/mod-lib) | Shared library: base class, menu, config editor, hot reload, patch coordinator |
+| [Mod-Handler](https://github.com/swyf-modding/Mod-Handler) | The in-game **Plugins** tab — turn mods off without leaving a session |
+| [AI-Backend](https://github.com/swyf-modding/AI-Backend) | Routes the game's AI calls to your own LLM |
