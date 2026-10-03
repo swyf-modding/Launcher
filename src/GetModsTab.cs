@@ -266,9 +266,9 @@ namespace ScamWYF.Launcher
                 try
                 {
                     var fetched = ModInstaller.Fetch(release.Package, token, note => Status(note));
-                    folder = fetched.Key;
+                    folder = fetched.WorkingFolder;
 
-                    var plan = ModInstaller.Plan(release, folder, _app.Install);
+                    var plan = ModInstaller.Plan(release, fetched.UnpackedFolder, _app.Install);
 
                     OnUi(() =>
                     {
@@ -405,20 +405,20 @@ namespace ScamWYF.Launcher
                         token,
                         note => Status(note));
 
-                    folder = fetched.Key;
+                    folder = fetched.WorkingFolder;
 
                     var isZip = fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
 
                     var files = isZip ? new[] { new ModFile(fileName, ModFolder.Plugins, true) } : null;
 
-                    var steps = isZip ? FromZip(folder) : Single(folder, fileName);
+                    var steps = isZip ? FromZip(fetched.UnpackedFolder) : Single(fetched.UnpackedFolder, fileName);
                     if (steps.Count == 0) throw new IOException("nothing installable was found in the download");
 
                     var plan = new InstallPlan { Steps = steps };
                     var source = new ModSource("(url)", Path.GetFileNameWithoutExtension(fileName),
                         "Downloaded from " + HostOf(url), new ModFile[0]);
                     plan.Release = new ReleaseInfo(source, "(no version)", null,
-                        new ReleaseAsset(fileName, 0, url, fetched.Value));
+                        new ReleaseAsset(fileName, 0, url, fetched.Sha256));
 
                     OnUi(() =>
                     {

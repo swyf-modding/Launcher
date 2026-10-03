@@ -81,39 +81,62 @@ namespace ScamWYF.Launcher
             }
         }
 
+        /// <summary>What a fetch produced, and where it put it.</summary>
+    internal sealed class Fetched
+    {
         /// <summary>
-        /// Download a release's zip and unpack it.
+        /// The temp folder holding the zip and the unpacked copy. This is what Discard takes.
         /// </summary>
-        /// <returns>The working folder, and the SHA-256 of the zip as downloaded.</returns>
-        public static KeyValuePair<string, string> Fetch(ReleaseAsset asset, string token, Action<string> status)
+        /// <remarks>
+        /// Deliberately not the unpacked subfolder. Discarding that leaves the downloaded zip and its
+        /// parent behind, so every install would quietly add a copy to %TEMP% and nothing would ever
+        /// reclaim it - which is the unbounded growth this project's own docs call out as the reason a
+        /// delete has to actually delete.
+        /// </remarks>
+        public string WorkingFolder;
+
+        public string UnpackedFolder;
+
+        public string Sha256;
+    }
+
+    /// <summary>
+    /// Download a release's zip and unpack it.
+    /// </summary>
+    public static Fetched Fetch(ReleaseAsset asset, string token, Action<string> status)
+    {
+        var folder = WorkingFolder(token);
+
+        if (status != null) status("Downloading " + asset.Name + " (" + Http.Describe(asset.Size) + ")...");
+
+        var zipPath = Path.Combine(folder, asset.Name);
+        var actual = Http.Download(asset.DownloadUrl, zipPath, null);
+
+        // GitHub's digest is from the same place as the file, so this catches a mangled download and a
+        // CDN that served something else - not a compromised release. Reported either way, because a
+        // number the user can check is worth more than silence.
+        if (!string.IsNullOrEmpty(asset.Sha256) &&
+            !string.Equals(asset.Sha256, actual, StringComparison.OrdinalIgnoreCase))
         {
-            var folder = WorkingFolder(token);
-
-            if (status != null) status("Downloading " + asset.Name + " (" + Http.Describe(asset.Size) + ")...");
-
-            var zipPath = Path.Combine(folder, asset.Name);
-            var actual = Http.Download(asset.DownloadUrl, zipPath, null);
-
-            // GitHub's digest is from the same place as the file, so this catches a mangled download and a
-            // CDN that served something else - not a compromised release. Reported either way, because a
-            // number the user can check is worth more than silence.
-            if (!string.IsNullOrEmpty(asset.Sha256) &&
-                !string.Equals(asset.Sha256, actual, StringComparison.OrdinalIgnoreCase))
-            {
-                Discard(folder);
-                throw new IOException("the download does not match the checksum GitHub published for it, so it " +
-                                      "has been discarded and nothing was installed. Either the download was " +
-                                      "corrupted or the file served was not the one published");
-            }
-
-            if (status != null) status("Unpacking...");
-
-            var unpacked = Path.Combine(folder, "unpacked");
-            Directory.CreateDirectory(unpacked);
-            Unpack(zipPath, unpacked);
-
-            return new KeyValuePair<string, string>(unpacked, actual);
+            Discard(folder);
+            throw new IOException("the download does not match the checksum GitHub published for it, so it " +
+                                  "has been discarded and nothing was installed. Either the download was " +
+                                  "corrupted or the file served was not the one published");
         }
+
+        if (status != null) status("Unpacking...");
+
+        var unpacked = Path.Combine(folder, "unpacked");
+        Directory.CreateDirectory(unpacked);
+        Unpack(zipPath, unpacked);
+
+        return new Fetched
+        {
+            WorkingFolder = folder,
+            UnpackedFolder = unpacked,
+            Sha256 = actual
+        };
+    }
 
         /// <summary>
         /// Unpack a zip, refusing any entry that would land outside the destination.

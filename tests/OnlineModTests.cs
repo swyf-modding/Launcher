@@ -115,21 +115,21 @@ namespace ScamWYF.Launcher.Tests
             try
             {
                 var fetched = ModInstaller.Fetch(release.Package, token, note => { });
-                folder = fetched.Key;
+                folder = fetched.WorkingFolder;
 
-                Check("the download was checksummed", !string.IsNullOrEmpty(fetched.Value), true);
+                Check("the download was checksummed", !string.IsNullOrEmpty(fetched.Sha256), true);
 
                 if (release.Package.Sha256 != null)
                 {
                     Check("it matches what GitHub published",
-                        string.Equals(release.Package.Sha256, fetched.Value, StringComparison.OrdinalIgnoreCase), true);
+                        string.Equals(release.Package.Sha256, fetched.Sha256, StringComparison.OrdinalIgnoreCase), true);
                 }
 
                 var installed = GameInstall.Resolve(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
                     + "\\scamwyf-plancheck-does-not-exist");
 
-                var plan = ModInstaller.Plan(release, folder, installed);
+                var plan = ModInstaller.Plan(release, fetched.UnpackedFolder, installed);
 
                 Check("the plan covers every file the catalogue names",
                     plan.Steps.Count, release.Source.Files.Length);
