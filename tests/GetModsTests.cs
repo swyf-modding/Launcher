@@ -33,6 +33,7 @@ namespace ScamWYF.Launcher.Tests
             LibraryWithoutAttributeIsAccepted();
             FolderRouting();
             CatalogueIsWellFormed();
+            BepInExVersionRules();
 
             Console.WriteLine();
             Console.WriteLine(_passed + " passed, " + _failed + " failed");
@@ -356,6 +357,64 @@ namespace ScamWYF.Launcher.Tests
         }
 
         // ---------------------------------------------------------------- helpers
+
+        /// <summary>
+        /// BepInEx's version rule, checked against the exact strings that caused a release to ship two
+        /// mods that loaded nothing.
+        /// </summary>
+        /// <remarks>
+        /// BepInEx 5 does `new System.Version(<the [BepInPlugin] version argument>)` in a try/catch and
+        /// skips the type if it throws. A SemVer string with build metadata - "1.2.3+commitsha" - is
+        /// valid SemVer and invalid System.Version, so a mod carrying one is skipped with "version is
+        /// invalid" in the log and nothing anywhere else says so. These are the cases, both directions.
+        /// </remarks>
+        private static void BepInExVersionRules()
+        {
+            Section("BepInEx version acceptance");
+
+            // Accepted: what a well-formed generated version looks like.
+            VersionAccepted("1.0.1");
+            VersionAccepted("1.0");
+            VersionAccepted("1.0.0.0");
+            VersionAccepted("01.02.03");
+
+            // Rejected: the exact shape that shipped and silently loaded nothing.
+            RefusesVersion("1.0.1+g1d246ee");
+            RefusesVersion("1.0.1+dirty");
+            RefusesVersion("1.0.1-rc1");
+            RefusesVersion("v1.0.1");
+            RefusesVersion("1.0.0.0.1");
+
+            // Rejected: one component throws, though it looks like a version.
+            RefusesVersion("1");
+
+            RefusesVersion("");
+            RefusesVersion(null);
+
+            // The rule has to agree with the runtime, not with a table written out by hand. Every string
+            // above is put through new Version() and the two answers compared.
+            var agrees = true;
+            foreach (var candidate in new[] { "1.0.1", "1.0.1+g1d246ee", "1", "1.0.0.0", "v2", "" })
+            {
+                bool runtime;
+                try { runtime = new Version(candidate) != null; }
+                catch (Exception) { runtime = false; }
+
+                if (runtime != PluginScanner.BepInExWouldAccept(candidate)) agrees = false;
+            }
+            Check("agrees with System.Version on every case", agrees, true);
+        }
+
+        private static void VersionAccepted(string version)
+        {
+            Check("BepInEx would load version '" + version + "'", PluginScanner.BepInExWouldAccept(version), true);
+        }
+
+        private static void RefusesVersion(string version)
+        {
+            var shown = version ?? "(null)";
+            Check("BepInEx would skip version '" + shown + "'", PluginScanner.BepInExWouldAccept(version), false);
+        }
 
         private static void Section(string name)
         {

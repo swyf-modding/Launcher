@@ -104,6 +104,19 @@ namespace ScamWYF.Launcher
                 problem = "no [BepInPlugin] attribute, so BepInEx will not load it as a mod " +
                           "(the shared library is deliberately like this)";
             }
+            else if (problem == null && !BepInExWouldAccept(version))
+            {
+                // The one failure this tool was getting wrong by omission. It listed the mod, named it,
+                // showed a plausible version - and BepInEx then skipped the type and loaded nothing. The
+                // only symptom anywhere was a line in a log file nobody had opened.
+                //
+                // BepInEx parses this argument with `new System.Version(...)` in a try/catch; on failure
+                // the attribute's Version is null and Chainloader skips the type. So the rule is exactly
+                // System.Version's, not a guess at it.
+                problem = "its [BepInPlugin] version '" + version + "' is not something BepInEx can " +
+                          "parse, so BepInEx will skip this mod and it will not load. BepInEx needs two " +
+                          "to four dot-separated numbers, with no letters and no '+' or '-'";
+            }
 
             return new PluginEntry(path, enabled, guid, name, version, problem, isAssembly);
         }
@@ -138,6 +151,35 @@ namespace ScamWYF.Launcher
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Whether BepInEx would accept a [BepInPlugin] version string, by using its own rule.
+        /// </summary>
+        /// <remarks>
+        /// BepInEx 5 constructs <c>new System.Version(str)</c> in the BepInPlugin constructor and leaves
+        /// the attribute's Version null if it throws; Chainloader then skips the type with "version is
+        /// invalid". So the test is not a guess at the format - it is the same constructor, and
+        /// System.Version is what defines it: two to four dot-separated non-negative integers, nothing
+        /// else. A single component throws too, which is why "2" is not a valid plugin version even
+        /// though it looks like one.
+        ///
+        /// Checked here so the Mods tab can say a mod will not load, rather than leaving that to be
+        /// discovered in BepInEx\LogOutput.log.
+        /// </remarks>
+        internal static bool BepInExWouldAccept(string version)
+        {
+            if (string.IsNullOrEmpty(version)) return false;
+
+            try
+            {
+                var parsed = new Version(version);
+                return parsed != null;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         /// <summary>Types in the module and in every namespace, since BepInEx looks in all of them.</summary>
