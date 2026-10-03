@@ -174,6 +174,23 @@ namespace ScamWYF.Launcher
             }
         }
 
+        /// <summary>
+        /// Re-read what is on disk, in both mod-related tabs.
+        /// </summary>
+        /// <remarks>
+        /// The two tabs answer the same question from opposite ends - "what is installed" and "what can
+        /// I install" - so a change made in one has to show up in the other. Deleting a mod on the Mods
+        /// tab leaves the Get mods row claiming it is installed, and installing one left that row
+        /// unchanged too, which is the kind of thing that makes a person distrust the whole window.
+        ///
+        /// No recursion: RefreshInstalled only touches this tab's own rows.
+        /// </remarks>
+        public void RefreshModViews()
+        {
+            _mods.Reload();
+            _getMods.RefreshInstalled();
+        }
+
         public void RunSetup(bool offline, Action<string> onLine, Action<int> onFinished)
         {
             new Thread(delegate ()

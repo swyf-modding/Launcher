@@ -133,6 +133,29 @@ namespace ScamWYF.Launcher
             UpdateButtons();
         }
 
+        /// <summary>
+        /// Re-read what is on disk and update the installed column, without going near the network.
+        /// </summary>
+        /// <remarks>
+        /// Called after an install, and after the Mods tab changes something. The column is derived from
+        /// the filesystem, so re-reading it is a handful of File.Exists calls - and doing that instead of
+        /// re-running the whole lookup is the difference between the row updating immediately and the
+        /// user being told a mod they just installed is "not installed" until they switch tabs and back.
+        ///
+        /// Deliberately does not touch the status line or re-fetch releases: an install has just put a
+        /// message there worth reading, and the tag numbers have not changed.
+        /// </remarks>
+        public void RefreshInstalled()
+        {
+            for (var i = 0; i < _list.Items.Count; i++)
+            {
+                var release = _list.Items[i].Tag as ReleaseInfo;
+                if (release == null) continue;
+
+                _list.Items[i].SubItems[3].Text = DescribeInstalled(release.Source);
+            }
+        }
+
         /// <summary>Ask GitHub what the latest release of each known mod is.</summary>
         public void Reload()
         {
@@ -355,7 +378,7 @@ namespace ScamWYF.Launcher
                 ModInstaller.Discard(folder);
             }
 
-            _app.Mods.Rescan();
+            _app.RefreshModViews();
         }
 
         private void InstallFromUrl()
@@ -575,7 +598,7 @@ namespace ScamWYF.Launcher
                 ModInstaller.Discard(folder);
             }
 
-            _app.Mods.Rescan();
+            _app.RefreshModViews();
         }
 
         private static string GuessFileName(string url)

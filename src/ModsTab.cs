@@ -233,7 +233,7 @@ namespace ScamWYF.Launcher
 
             var result = _app.Mods.Toggle(entry);
             _app.Status(result.Ok ? result.Message : result.Message, result.Ok);
-            Reload();
+            _app.RefreshModViews();
         }
 
         private void OnDelete(object sender, EventArgs e)
@@ -253,7 +253,7 @@ namespace ScamWYF.Launcher
 
             var result = _app.Mods.Delete(entry);
             _app.Status(result.Ok ? result.Message : result.Message, result.Ok);
-            Reload();
+            _app.RefreshModViews();
         }
     }
 }
