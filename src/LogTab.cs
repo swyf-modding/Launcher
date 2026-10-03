@@ -19,7 +19,7 @@ namespace ScamWYF.Launcher
     internal sealed class LogTab : UserControl
     {
         private readonly App _app;
-        private readonly ListView _problems = new ListView();
+        private readonly ThemedListView _problems = new ThemedListView();
         private readonly TextBox _raw = new TextBox();
         private readonly Label _headline = new Label();
         private readonly CheckBox _follow = new CheckBox();
@@ -33,7 +33,8 @@ namespace ScamWYF.Launcher
         private void Build()
         {
             Dock = DockStyle.Fill;
-            Padding = new Padding(12);
+            Padding = Theme.PagePadding;
+            BackColor = Theme.Window;
 
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -43,26 +44,25 @@ namespace ScamWYF.Launcher
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
             _headline.AutoSize = true;
-            _headline.Margin = new Padding(0, 0, 0, 8);
+            _headline.Font = Theme.Heading;
+            _headline.ForeColor = Theme.Text;
+            _headline.Margin = new Padding(0, 0, 0, Theme.Gap);
             root.Controls.Add(_headline, 0, 0);
 
             _problems.Dock = DockStyle.Fill;
-            _problems.View = View.Details;
-            _problems.FullRowSelect = true;
-            _problems.HideSelection = false;
-            _problems.GridLines = true;
-            _problems.Columns.Add("line", 60);
-            _problems.Columns.Add("what", 200);
-            _problems.Columns.Add("detail", 700);
+            _problems.Columns.Add("Line", 70);
+            _problems.Columns.Add("What", 210);
+            _problems.Columns.Add("Detail", 620);
             root.Controls.Add(_problems, 0, 1);
 
-            var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 8, 0, 4) };
+            var buttons = Theme.ButtonRow();
+            buttons.Margin = new Padding(0, Theme.Gap, 0, Theme.Gap);
 
-            var reload = new Button { Text = "Reload", AutoSize = true, Padding = new Padding(10, 4, 10, 4) };
+            var reload = new FlatButton { Text = "Reload" };
             reload.Click += delegate { Reload(); };
             buttons.Controls.Add(reload);
 
-            var openLog = new Button { Text = "Open log in notepad", AutoSize = true, Padding = new Padding(10, 4, 10, 4), Margin = new Padding(8, 0, 0, 0) };
+            var openLog = new FlatButton { Text = "Open log in notepad" }.Spaced();
             openLog.Click += delegate
             {
                 var path = _app.Install.LogFile;
@@ -71,13 +71,15 @@ namespace ScamWYF.Launcher
             };
             buttons.Controls.Add(openLog);
 
-            var openGame = new Button { Text = "Open game folder", AutoSize = true, Padding = new Padding(10, 4, 10, 4), Margin = new Padding(8, 0, 0, 0) };
+            var openGame = new FlatButton { Text = "Open game folder" }.Spaced();
             openGame.Click += delegate { _app.OpenFolder(_app.Install.Path); };
             buttons.Controls.Add(openGame);
 
             _follow.Text = "Follow while the game runs";
             _follow.AutoSize = true;
-            _follow.Margin = new Padding(16, 10, 0, 0);
+            _follow.ForeColor = Theme.Muted;
+            _follow.Font = Theme.Small;
+            _follow.Margin = new Padding(Theme.Gap * 2, 8, 0, 0);
             _follow.CheckedChanged += OnFollowChecked;
             buttons.Controls.Add(_follow);
 
@@ -88,15 +90,18 @@ namespace ScamWYF.Launcher
             _raw.ScrollBars = ScrollBars.Both;
             _raw.WordWrap = false;
             _raw.Dock = DockStyle.Fill;
-            _raw.BackColor = SystemColors.Window;
-            _raw.Font = new Font(FontFamily.GenericMonospace, 9f);
+            _raw.BackColor = Theme.Field;
+            _raw.ForeColor = Theme.Text;
+            _raw.BorderStyle = BorderStyle.None;
+            _raw.Font = Theme.Mono;
             root.Controls.Add(_raw, 0, 3);
 
             var hint = new Label
             {
                 AutoSize = true,
-                ForeColor = SystemColors.GrayText,
-                Margin = new Padding(0, 6, 0, 0),
+                ForeColor = Theme.Muted,
+                Font = Theme.Small,
+                Margin = new Padding(0, Theme.Gap, 0, 0),
                 Text = "BepInEx writes this on every launch. A preloader crash, before BepInEx starts, " +
                        "goes to preloader_*.log in the game folder instead."
             };
@@ -160,11 +165,14 @@ namespace ScamWYF.Launcher
                 var item = new ListViewItem((i + 1).ToString());
                 item.SubItems.Add(Kind(line));
                 item.SubItems.Add(Detail(line));
-                item.ForeColor = IsFatal(line) ? Color.FromArgb(176, 0, 32) : Color.FromArgb(176, 96, 0);
+                item.ForeColor = IsFatal(line) ? Theme.Bad : Theme.Warn;
                 _problems.Items.Add(item);
             }
 
             _problems.EndUpdate();
+
+            Theme.FitHeadline(_headline, _problems.ClientSize.Width);
+            _problems.Refit();
         }
 
         private static bool IsInteresting(string line)

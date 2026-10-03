@@ -25,12 +25,12 @@ namespace ScamWYF.Launcher
     {
         private readonly App _app;
 
-        private readonly ListView _list = new ListView();
+        private readonly ThemedListView _list = new ThemedListView();
         private readonly Label _summary = new Label();
-        private readonly Button _check = new Button();
-        private readonly Button _install = new Button();
+        private readonly FlatButton _check = new FlatButton();
+        private readonly FlatButton _install = new FlatButton();
         private readonly TextBox _url = new TextBox();
-        private readonly Button _fromUrl = new Button();
+        private readonly FlatButton _fromUrl = new FlatButton();
 
         private readonly List<ReleaseInfo> _releases = new List<ReleaseInfo>();
 
@@ -46,7 +46,8 @@ namespace ScamWYF.Launcher
         private void Build()
         {
             Dock = DockStyle.Fill;
-            Padding = new Padding(12);
+            Padding = Theme.PagePadding;
+            BackColor = Theme.Window;
 
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -55,58 +56,57 @@ namespace ScamWYF.Launcher
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
             _summary.AutoSize = true;
-            _summary.Margin = new Padding(0, 0, 0, 8);
+            _summary.Font = Theme.Strong;
+            _summary.ForeColor = Theme.Text;
+            _summary.Margin = new Padding(0, 0, 0, Theme.Gap);
             root.Controls.Add(_summary, 0, 0);
 
             _list.Dock = DockStyle.Fill;
-            _list.View = View.Details;
-            _list.FullRowSelect = true;
-            _list.MultiSelect = false;
-            _list.HideSelection = false;
-            _list.GridLines = true;
-            _list.Columns.Add("mod", 150);
-            _list.Columns.Add("release", 90);
-            _list.Columns.Add("size", 80);
-            _list.Columns.Add("installed", 110);
-            _list.Columns.Add("what it does", 480);
+            _list.Columns.Add("Mod", 150);
+            _list.Columns.Add("Release", 90);
+            _list.Columns.Add("Size", 90);
+            _list.Columns.Add("Installed", 110);
+            _list.Columns.Add("What it does", 460);
             _list.SelectedIndexChanged += delegate { UpdateButtons(); };
             root.Controls.Add(_list, 0, 1);
 
-            var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 8, 0, 0) };
+            var buttons = Theme.ButtonRow();
 
             _check.Text = "Check for updates";
-            _check.AutoSize = true;
-            _check.Padding = new Padding(10, 4, 10, 4);
             _check.Click += delegate { CheckForUpdates(); };
             buttons.Controls.Add(_check);
 
-            _install.Text = "Install...";
-            _install.AutoSize = true;
-            _install.Padding = new Padding(10, 4, 10, 4);
-            _install.Margin = new Padding(8, 0, 0, 0);
+            _install.Text = "Install\u2026";
+            _install.Accent = true;
+            _install.Spaced();
             _install.Click += delegate { InstallSelected(); };
             buttons.Controls.Add(_install);
 
             root.Controls.Add(buttons, 0, 2);
 
-            var fromUrl = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 12, 0, 0) };
+            var fromUrl = Theme.ButtonRow();
+            fromUrl.Margin = new Padding(0, Theme.Gap * 2, 0, 0);
 
             var urlLabel = new Label
             {
-                Text = "Install a dll from a URL:",
+                Text = "Install a dll from a URL",
                 AutoSize = true,
-                Margin = new Padding(0, 6, 8, 0)
+                ForeColor = Theme.Muted,
+                Font = Theme.Small,
+                Margin = new Padding(0, 8, Theme.Gap, 0)
             };
             fromUrl.Controls.Add(urlLabel);
 
-            _url.Width = 380;
-            _url.Margin = new Padding(0, 3, 8, 0);
+            _url.Width = 420;
+            _url.Height = Theme.ControlHeight - 6;
+            _url.BackColor = Theme.Field;
+            _url.ForeColor = Theme.Text;
+            _url.BorderStyle = BorderStyle.FixedSingle;
+            _url.Font = Theme.Body;
+            _url.Margin = new Padding(0, 3, Theme.Gap, 0);
             fromUrl.Controls.Add(_url);
 
-            _fromUrl.Text = "Download and install...";
-            _fromUrl.AutoSize = true;
-            _fromUrl.Padding = new Padding(10, 4, 10, 4);
-            _fromUrl.Margin = new Padding(0, 0, 0, 0);
+            _fromUrl.Text = "Download and install\u2026";
             _fromUrl.Click += delegate { InstallFromUrl(); };
             fromUrl.Controls.Add(_fromUrl);
 
@@ -116,8 +116,9 @@ namespace ScamWYF.Launcher
             {
                 AutoSize = true,
                 MaximumSize = new Size(900, 0),
-                ForeColor = Color.FromArgb(176, 96, 0),
-                Margin = new Padding(0, 10, 0, 0),
+                ForeColor = Theme.Warn,
+                Font = Theme.Small,
+                Margin = new Padding(0, Theme.Gap, 0, 0),
                 Text =
                     "Installing a mod puts code in your game folder that BepInEx will load and run on the " +
                     "next launch. Only install what you trust.\n\n" +
@@ -241,6 +242,9 @@ namespace ScamWYF.Launcher
                         ? _releases.Count + " mod(s) checked against GitHub."
                         : _releases.Count + " checked, " + problems.Count + " could not be read. " +
                           string.Join("  ", problems.ToArray());
+
+                    Theme.FitHeadline(_summary, _list.ClientSize.Width);
+                    _list.Refit();
 
                     if (_list.Items.Count > 0) _list.Items[0].Selected = true;
 

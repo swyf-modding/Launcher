@@ -19,10 +19,10 @@ namespace ScamWYF.Launcher
     internal sealed class SetupTab : UserControl
     {
         private readonly App _app;
-        private readonly ListView _checks = new ListView();
+        private readonly ThemedListView _checks = new ThemedListView();
         private readonly TextBox _output = new TextBox();
-        private readonly Button _run = new Button();
-        private readonly Button _offline = new Button();
+        private readonly FlatButton _run = new FlatButton();
+        private readonly FlatButton _offline = new FlatButton();
         private readonly CheckBox _openLog = new CheckBox();
         private readonly Label _headline = new Label();
 
@@ -35,7 +35,8 @@ namespace ScamWYF.Launcher
         private void Build()
         {
             Dock = DockStyle.Fill;
-            Padding = new Padding(12);
+            Padding = Theme.PagePadding;
+            BackColor = Theme.Window;
 
             var root = new TableLayoutPanel
             {
@@ -50,47 +51,30 @@ namespace ScamWYF.Launcher
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
             _headline.AutoSize = true;
-            _headline.Font = new Font(Font, FontStyle.Bold);
-            _headline.Margin = new Padding(0, 0, 0, 8);
+            _headline.Font = Theme.Heading;
+            _headline.ForeColor = Theme.Text;
+            _headline.Margin = new Padding(0, 0, 0, Theme.Gap);
             root.Controls.Add(_headline, 0, 0);
 
             _checks.Dock = DockStyle.Fill;
-            _checks.View = View.Details;
-            _checks.FullRowSelect = true;
-            _checks.HideSelection = false;
-            _checks.GridLines = true;
-            _checks.Columns.Add("check", 260);
-            _checks.Columns.Add("state", 120);
-            _checks.Columns.Add("detail", 520);
+            _checks.Columns.Add("Check", 230);
+            _checks.Columns.Add("State", 90);
+            _checks.Columns.Add("Detail", 620);
             root.Controls.Add(_checks, 0, 1);
 
-            var buttons = new FlowLayoutPanel
-            {
-                AutoSize = true,
-                Dock = DockStyle.Fill,
-                Margin = new Padding(0, 8, 0, 8)
-            };
+            var buttons = Theme.ButtonRow();
 
             _run.Text = "Set up / repair";
-            _run.AutoSize = true;
-            _run.Padding = new Padding(10, 4, 10, 4);
+            _run.Accent = true;
             _run.Click += OnRun;
             buttons.Controls.Add(_run);
 
-            _offline.Text = "Offline (BepInEx already downloaded)";
-            _offline.AutoSize = true;
-            _offline.Padding = new Padding(10, 4, 10, 4);
-            _offline.Margin = new Padding(8, 0, 0, 0);
+            _offline.Text = "Offline";
+            _offline.Spaced();
             _offline.Click += OnRunOffline;
             buttons.Controls.Add(_offline);
 
-            var openFolder = new Button
-            {
-                Text = "Open game folder",
-                AutoSize = true,
-                Padding = new Padding(10, 4, 10, 4),
-                Margin = new Padding(8, 0, 0, 0)
-            };
+            var openFolder = new FlatButton { Text = "Open game folder" }.Spaced();
             openFolder.Click += delegate { _app.OpenFolder(_app.Install.Path); };
             buttons.Controls.Add(openFolder);
 
@@ -100,13 +84,17 @@ namespace ScamWYF.Launcher
             _output.ReadOnly = true;
             _output.ScrollBars = ScrollBars.Vertical;
             _output.Dock = DockStyle.Fill;
-            _output.BackColor = SystemColors.Window;
-            _output.Font = new Font(FontFamily.GenericMonospace, 9f);
+            _output.BackColor = Theme.Field;
+            _output.ForeColor = Theme.Text;
+            _output.BorderStyle = BorderStyle.None;
+            _output.Font = Theme.Mono;
             _output.WordWrap = false;
             root.Controls.Add(_output, 0, 3);
 
             _openLog.Text = "Follow the log while it runs";
             _openLog.AutoSize = true;
+            _openLog.ForeColor = Theme.Muted;
+            _openLog.Font = Theme.Small;
             _openLog.Checked = true;
             root.Controls.Add(_openLog, 0, 4);
 
@@ -142,6 +130,9 @@ namespace ScamWYF.Launcher
 
             _checks.EndUpdate();
 
+            Theme.FitHeadline(_headline, _checks.ClientSize.Width);
+            _checks.Refit();
+
             var canRun = install.HasGame;
             _run.Enabled = canRun && _app.Setup.IsAvailable;
             _offline.Enabled = _run.Enabled;
@@ -158,7 +149,7 @@ namespace ScamWYF.Launcher
             var item = new ListViewItem(name);
             item.SubItems.Add(ok ? "ok" : "missing");
             item.SubItems.Add(detail ?? "");
-            item.ForeColor = ok ? SystemColors.ControlText : Color.FromArgb(176, 0, 32);
+            item.ForeColor = ok ? Theme.Text : Theme.Bad;
             _checks.Items.Add(item);
         }
 

@@ -227,6 +227,7 @@ both of which matter for a tool whose job includes deleting mods.
 ```text
 src/
 |-- App.cs             The window, and launching the game
+|-- Theme.cs           The palette, and the three controls WinForms will not recolour
 |-- GameInstall.cs     Finding and probing an install
 |-- SetupRunner.cs     Running setup.ps1 and streaming its output
 |-- SetupTab.cs        The Setup tab
@@ -245,6 +246,20 @@ tools/
 tests/                 GetModsTests.cs (offline) and OnlineModTests.cs (needs network)
 vendor/                Mono.Cecil, staged and pinned
 ```
+
+### How it looks
+
+Dark, low-chroma, and the same palette the in-game menu uses — mod-lib's `UiTheme`, which reads the
+game's live colours and falls back to these. So the launcher and the menu it opens are one system
+rather than two, and there is one file to change rather than a set of greys scattered through four tabs.
+
+Three controls are subclassed, and they are the three WinForms defaults that ignore `BackColor` and
+draw their own chrome from system colours: the button, the tab strip, and the list view. Setting
+`BackColor` on a stock control leaves a light grey strip along the top of a dark form, which is most of
+what "looks like a 1998 app" actually is.
+
+The window is 1060x720 because the content needs it. A row of checks with a detail column is not
+readable at 940x640, and the answer to that is not a narrower column.
 
 ---
 

@@ -31,7 +31,16 @@ namespace ScamWYF.Launcher
         private GetModsTab _getMods;
         private LogTab _log;
 
-        private readonly TabControl _tabs = new TabControl();
+        /// <summary>
+        /// The tab strip, which is also the page container.
+        /// </summary>
+        /// <remarks>
+        /// One control, not a themed strip wrapped around a hidden stock one. Two TabControls sharing
+        /// TabPages is fragile - moving a page between them leaves the second one's collection empty and
+        /// it silently draws no tabs at all, which is exactly what happened the first time.
+        /// </remarks>
+        private readonly TabStrip _strip = new TabStrip();
+
         private readonly ToolStripStatusLabel _status = new ToolStripStatusLabel();
 
         private bool _busy;
@@ -59,9 +68,10 @@ namespace ScamWYF.Launcher
             Mods = new ModManager(Install.BepInExCore);
             Setup = new SetupRunner(FindSetupScript());
 
+            Theme.Apply(this);
             Text = "Scam With Your Friends - modding " + BuildVersion();
-            MinimumSize = new Size(880, 560);
-            Size = new Size(940, 640);
+            MinimumSize = new Size(940, 620);
+            Size = new Size(1060, 720);
             StartPosition = FormStartPosition.CenterScreen;
 
             Build();
@@ -129,27 +139,70 @@ namespace ScamWYF.Launcher
             _getMods = new GetModsTab(this);
             _log = new LogTab(this);
 
-            _tabs.Dock = DockStyle.Fill;
-            _tabs.TabPages.Add(Page("Setup", _setup));
-            _tabs.TabPages.Add(Page("Mods", _mods));
-            _tabs.TabPages.Add(Page("Get mods", _getMods));
-            _tabs.TabPages.Add(Page("Log", _log));
-            _tabs.SelectedIndexChanged += delegate { OnTabShown(); };
-            Controls.Add(_tabs);
+            _strip.Dock = DockStyle.Fill;
+            _strip.TabPages.Add(Page("Setup", _setup));
+            _strip.TabPages.Add(Page("Mods", _mods));
+            _strip.TabPages.Add(Page("Get mods", _getMods));
+            _strip.TabPages.Add(Page("Log", _log));
+            _strip.SelectedIndexChanged += delegate { OnStripChanged(); };
+            Controls.Add(_strip);
 
-            var strip = new ToolStrip();
-            strip.Dock = DockStyle.Bottom;
+            var strip = new ToolStrip
+            {
+                Dock = DockStyle.Bottom,
+                BackColor = Theme.Surface,
+                ForeColor = Theme.Text,
+                RenderMode = ToolStripRenderMode.System,
+                Padding = new Padding(Theme.Gap, 2, Theme.Gap, 2)
+            };
             _status.Spring = true;
             _status.TextAlign = ContentAlignment.MiddleLeft;
+            _status.ForeColor = Theme.Muted;
+            _status.Font = Theme.Small;
             strip.Items.Add(_status);
             strip.Items.Add(new ToolStripStatusLabel(" "));
             strip.Items.Add(LaunchButton());
             Controls.Add(strip);
         }
 
+        /// <summary>
+        /// Re-probe whichever tab was just arrived at.
+        /// </summary>
+        /// <remarks>
+        /// On arrival rather than on a timer: the only thing that changes under the app's feet is the
+        /// install, and that changes when the user runs setup or the game updates.
+        /// </remarks>
+        private void OnStripChanged()
+        {
+            var index = _strip.SelectedIndex;
+
+            // Deferred until after layout. A tab that was not selected at startup is only given its
+            // final size when it is first shown, so a tab that measures itself in the same turn as the
+            // click measures the width it had before - and sizes its columns to that, which left the Log
+            // tab's problems list with a horizontal scrollbar it did not need.
+            if (!IsHandleCreated)
+            {
+                ShowTab(index);
+                return;
+            }
+
+            BeginInvoke(new Action(delegate { ShowTab(index); }));
+        }
+
+        private void ShowTab(int index)
+        {
+            switch (index)
+            {
+                case 0: _setup.Reload(); break;
+                case 1: _mods.Reload(); break;
+                case 2: _getMods.OnTabShown(); break;
+                case 3: _log.Reload(); break;
+            }
+        }
+
         private static TabPage Page(string title, Control content)
         {
-            var page = new TabPage(title);
+            var page = new TabPage(title) { BackColor = Theme.Window };
             page.Controls.Add(content);
             return page;
         }
@@ -161,17 +214,10 @@ namespace ScamWYF.Launcher
             return button;
         }
 
+        /// <summary>First paint: settle the selection so the first tab does what it says on arrival.</summary>
         private void OnTabShown()
         {
-            // Re-probe on arrival rather than on a timer: the only thing that changes under the app's
-            // feet is the install, and that changes when the user runs setup or the game updates.
-            switch (_tabs.SelectedIndex)
-            {
-                case 0: _setup.Reload(); break;
-                case 1: _mods.Reload(); break;
-                case 2: _getMods.OnTabShown(); break;
-                case 3: _log.Reload(); break;
-            }
+            OnStripChanged();
         }
 
         /// <summary>
@@ -226,7 +272,7 @@ namespace ScamWYF.Launcher
         {
             _busy = busy;
             _setup.Enabled = !busy;
-            _tabs.Enabled = !busy;
+            _strip.Enabled = !busy;
             UseWaitCursor = busy;
         }
 
@@ -239,7 +285,7 @@ namespace ScamWYF.Launcher
             }
 
             _status.Text = message ?? "";
-            _status.ForeColor = good ? Color.FromArgb(0, 110, 40) : Color.FromArgb(176, 0, 32);
+            _status.ForeColor = good ? Theme.Good : Theme.Bad;
         }
 
         /// <summary>Let the UI catch up while a long operation is going.</summary>

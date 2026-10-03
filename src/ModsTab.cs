@@ -24,11 +24,11 @@ namespace ScamWYF.Launcher
     internal sealed class ModsTab : UserControl
     {
         private readonly App _app;
-        private readonly ListView _list = new ListView();
-        private readonly Button _enable = new Button();
-        private readonly Button _disable = new Button();
-        private readonly Button _delete = new Button();
-        private readonly Button _refresh = new Button();
+        private readonly ThemedListView _list = new ThemedListView();
+        private readonly FlatButton _enable = new FlatButton();
+        private readonly FlatButton _disable = new FlatButton();
+        private readonly FlatButton _delete = new FlatButton();
+        private readonly FlatButton _refresh = new FlatButton();
         private readonly Label _summary = new Label();
 
         private List<PluginEntry> _entries = new List<PluginEntry>();
@@ -42,7 +42,8 @@ namespace ScamWYF.Launcher
         private void Build()
         {
             Dock = DockStyle.Fill;
-            Padding = new Padding(12);
+            Padding = Theme.PagePadding;
+            BackColor = Theme.Window;
 
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -51,75 +52,47 @@ namespace ScamWYF.Launcher
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
             _summary.AutoSize = true;
-            _summary.Margin = new Padding(0, 0, 0, 8);
+            _summary.Font = Theme.Strong;
+            _summary.ForeColor = Theme.Text;
+            _summary.Margin = new Padding(0, 0, 0, Theme.Gap);
             root.Controls.Add(_summary, 0, 0);
 
             _list.Dock = DockStyle.Fill;
-            _list.View = View.Details;
-            _list.FullRowSelect = true;
-            _list.MultiSelect = false;
-            _list.HideSelection = false;
-            _list.GridLines = true;
-            _list.Columns.Add("mod", 260);
-            _list.Columns.Add("version", 90);
-            _list.Columns.Add("state", 90);
-            _list.Columns.Add("guid", 280);
-            _list.Columns.Add("note", 300);
+            _list.Columns.Add("Mod", 230);
+            _list.Columns.Add("Version", 150);
+            _list.Columns.Add("State", 90);
+            _list.Columns.Add("GUID", 250);
+            _list.Columns.Add("Note", 300);
             _list.SelectedIndexChanged += delegate { UpdateButtons(); };
             _list.DoubleClick += delegate { Toggle(); };
             root.Controls.Add(_list, 0, 1);
 
-            var buttons = new FlowLayoutPanel
-            {
-                AutoSize = true,
-                Dock = DockStyle.Fill,
-                Margin = new Padding(0, 8, 0, 0)
-            };
+            var buttons = Theme.ButtonRow();
 
             _enable.Text = "Enable";
-            _enable.AutoSize = true;
-            _enable.Padding = new Padding(10, 4, 10, 4);
             _enable.Click += delegate { Toggle(); };
             buttons.Controls.Add(_enable);
 
             _disable.Text = "Disable";
-            _disable.AutoSize = true;
-            _disable.Padding = new Padding(10, 4, 10, 4);
-            _disable.Margin = new Padding(8, 0, 0, 0);
+            _disable.Spaced();
             _disable.Click += delegate { Toggle(); };
             buttons.Controls.Add(_disable);
 
-            _delete.Text = "Delete...";
-            _delete.AutoSize = true;
-            _delete.Padding = new Padding(10, 4, 10, 4);
-            _delete.Margin = new Padding(8, 0, 0, 0);
+            _delete.Text = "Delete\u2026";
+            _delete.Spaced();
             _delete.Click += OnDelete;
             buttons.Controls.Add(_delete);
 
             _refresh.Text = "Rescan";
-            _refresh.AutoSize = true;
-            _refresh.Padding = new Padding(10, 4, 10, 4);
-            _refresh.Margin = new Padding(8, 0, 0, 0);
+            _refresh.Spaced();
             _refresh.Click += delegate { Reload(); };
             buttons.Controls.Add(_refresh);
 
-            var openPlugins = new Button
-            {
-                Text = "Open plugins folder",
-                AutoSize = true,
-                Padding = new Padding(10, 4, 10, 4),
-                Margin = new Padding(8, 0, 0, 0)
-            };
+            var openPlugins = new FlatButton { Text = "Open plugins folder" }.Spaced();
             openPlugins.Click += delegate { _app.OpenFolder(_app.Install.PluginsFolder); };
             buttons.Controls.Add(openPlugins);
 
-            var openDisabled = new Button
-            {
-                Text = "Open disabled folder",
-                AutoSize = true,
-                Padding = new Padding(10, 4, 10, 4),
-                Margin = new Padding(8, 0, 0, 0)
-            };
+            var openDisabled = new FlatButton { Text = "Open disabled folder" }.Spaced();
             openDisabled.Click += delegate
             {
                 var folder = _app.Install.PluginsFolder.Replace("plugins", "plugins_disabled");
@@ -132,8 +105,9 @@ namespace ScamWYF.Launcher
             var hint = new Label
             {
                 AutoSize = true,
-                ForeColor = SystemColors.GrayText,
-                Margin = new Padding(0, 8, 0, 0),
+                ForeColor = Theme.Muted,
+                Font = Theme.Small,
+                Margin = new Padding(0, Theme.Gap, 0, 0),
                 Text = "Enable and disable move the file between plugins and plugins_disabled, which is " +
                        "what BepInEx watches. Changes take effect on the next launch."
             };
@@ -167,8 +141,8 @@ namespace ScamWYF.Launcher
                 item.SubItems.Add(entry.LoadError ?? "");
 
                 item.Tag = entry;
-                if (!entry.Enabled) item.ForeColor = SystemColors.GrayText;
-                else if (entry.LoadError != null) item.ForeColor = Color.FromArgb(176, 96, 0);
+                if (!entry.Enabled) item.ForeColor = Theme.Muted;
+                else if (entry.LoadError != null) item.ForeColor = Theme.Warn;
 
                 _list.Items.Add(item);
             }
@@ -177,6 +151,9 @@ namespace ScamWYF.Launcher
 
             var enabled = 0;
             foreach (var entry in _entries) if (entry.Enabled) enabled++;
+
+            Theme.FitHeadline(_summary, _list.ClientSize.Width);
+            _list.Refit();
 
             _summary.Text = _entries.Count + " mod file(s), " + enabled + " enabled";
 
