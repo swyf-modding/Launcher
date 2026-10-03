@@ -50,6 +50,10 @@
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
                         <Setter Property="Foreground" Value="{Binding Brush}" />
+                        <!-- Named on the container, not on the Grid inside the template. Set inside the
+                             template it *replaces* the name the peer would otherwise derive and the row
+                             ends up announcing nothing at all, which is worse than "ModRow" twice. -->
+                        <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
                     </Style>
                 </ListView.ItemContainerStyle>
                 <ListView.ItemTemplate>
@@ -77,6 +81,7 @@
             <Button x:Name="EnableButton" Content="Enable" Style="{StaticResource FlatButton}" Click="OnToggle" />
             <Button x:Name="DisableButton" Content="Disable" Margin="8,0,0,0" Style="{StaticResource FlatButton}" Click="OnToggle" />
             <Button x:Name="DeleteButton" Content="Delete…" Margin="8,0,0,0" Style="{StaticResource FlatButton}" Click="OnDelete" />
+            <Button x:Name="ConfigButton" Content="Config…" Margin="8,0,0,0" Style="{StaticResource FlatButton}" Click="OnConfig" />
             <Button Content="Rescan" Margin="8,0,0,0" Style="{StaticResource FlatButton}" Click="OnRescan" />
             <Button Content="Open plugins folder" Margin="8,0,0,0" Style="{StaticResource FlatButton}" Click="OnOpenPlugins" />
             <Button Content="Open disabled folder" Margin="8,0,0,0" Style="{StaticResource FlatButton}" Click="OnOpenDisabled" />

@@ -34,6 +34,7 @@ namespace ScamWYF.Launcher.Tests
             FolderRouting();
             CatalogueIsWellFormed();
             BepInExVersionRules();
+            ModConfigFiles();
 
             Console.WriteLine();
             Console.WriteLine(_passed + " passed, " + _failed + " failed");
@@ -421,6 +422,180 @@ namespace ScamWYF.Launcher.Tests
             Console.WriteLine();
             Console.WriteLine(name);
         }
+
+        // ---------------------------------------------------------------- mod config
+
+        /// <summary>
+        /// The config editor's parsing, validation and round-tripping.
+        /// </summary>
+        /// <remarks>
+        /// Weighted towards round-tripping, because that is where a mistake does damage. Everything this
+        /// writes goes into a file a mod wrote and will read back, so a test that only checks "the right
+        /// value came out" would pass while the documentation above it had been thrown away.
+        /// </remarks>
+        private static void ModConfigFiles()
+        {
+            Section("Mod config files");
+
+            var dir = Path.Combine(Path.GetTempPath(), "scamwyf-cfgtest-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "com.example.test.cfg");
+
+            try
+            {
+                File.WriteAllText(path, SampleConfig);
+
+                var config = ModConfigFile.Load(path);
+
+                Check("reads the plugin GUID", config.Guid, "com.example.test");
+                Check("reads what created the file", config.CreatedBy, "Example v1.2.3");
+                Check("finds every section", config.Sections.Count, 2);
+                Check("finds every setting", config.Entries.Count, 5);
+
+                var mode = Find(config, "Mode");
+                Check("reads a setting's section", mode.Section, "1 - General");
+                Check("reads a setting's value", mode.Value, "OpenAiCompatible");
+                Check("reads a setting's type", mode.SettingType, "BackendMode");
+                Check("reads a setting's default", mode.DefaultValue, "OpenAiCompatible");
+                Check("reads a fixed list of values", mode.Acceptable.Count, 3);
+                Check("keeps the documentation above a setting", mode.Comments.Count >= 3, true);
+
+                var debug = Find(config, "Debug");
+                Check("recognises a boolean", debug.IsBoolean, true);
+                Check("a boolean has no fixed value list", debug.HasFixedValues, false);
+
+                var baseUrl = Find(config, "BaseUrl");
+                Check("a free-text setting is not a boolean", baseUrl.IsBoolean, false);
+                Check("a free-text setting has no fixed values", baseUrl.HasFixedValues, false);
+
+                // Keys can repeat across sections; the editor addresses a setting by where it is, not by
+                // its name, so two of them must both survive.
+                Check("keeps same-named settings in different sections",
+                      string.Join(",", config.Entries.FindAll(e => e.Key == "Width").ConvertAll(e => e.Section)),
+                      "1 - General,2 - Other");
+
+                Section("Mod config validation");
+
+                var noProblem = config.ProblemWith(mode, "OllamaNative");
+                Check("accepts a declared value", noProblem, null);
+                Check("accepts a declared value in any case",
+                      config.ProblemWith(mode, "ollamanative"), null);
+                Check("refuses a value outside the list",
+                      config.ProblemWith(mode, "Gemini") != null, true);
+                Check("says what the values are",
+                      (config.ProblemWith(mode, "Gemini") ?? "").Contains("OllamaNative"), true);
+
+                Check("accepts true for a boolean", config.ProblemWith(debug, "true"), null);
+                Check("accepts FALSE for a boolean", config.ProblemWith(debug, "FALSE"), null);
+                Check("refuses a non-boolean for a boolean",
+                      config.ProblemWith(debug, "yes") != null, true);
+                Check("refuses a multi-line value",
+                      config.ProblemWith(baseUrl, "http://a\r\nhttp://b") != null, true);
+
+                Section("Mod config round trip");
+
+                Find(config, "Debug").Value = "true";
+                Find(config, "Mode").Value = "OllamaNative";
+
+                var changes = config.Changes();
+                Check("reports what changed", changes.Count, 2);
+
+                config.Save();
+
+                var after = File.ReadAllText(path);
+                Check("writes the changed value", after.Contains("Debug = true"), true);
+                Check("writes the other changed value", after.Contains("Mode = OllamaNative"), true);
+                Check("keeps the documentation", after.Contains("## Which backend to use."), true);
+                Check("keeps the default annotation", after.Contains("# Default value: OpenAiCompatible"), true);
+                Check("keeps the section headers", after.Contains("[2 - Other]"), true);
+                Check("keeps the trailing settings", after.Contains("Width = 1920"), true);
+                Check("keeps a blank line the parser ignored", after.Contains("## Plugin GUID: com.example.test\r\n\r\n[1 - General]"), true);
+                Check("writes no more lines than it read", LineCount(after), LineCount(SampleConfig));
+                Check("nothing is left modified after a save",
+                      ModConfigFile.Load(path).Changes().Count, 0);
+
+                // Re-saving with nothing changed must not rewrite the file, so a person's config is not
+                // churned just because they opened the editor.
+                var before = File.ReadAllText(path);
+                ModConfigFile.Load(path).Save();
+                Check("an unchanged save writes the same bytes", File.ReadAllText(path), before);
+
+                Section("Mod config edge cases");
+
+                var odd = Path.Combine(dir, "odd.cfg");
+                File.WriteAllText(odd, "no sections at all\r\nKey = value\r\n\r\n[Later]\r\nOther = 2\r\n");
+                var oddConfig = ModConfigFile.Load(odd);
+                Check("reads a file with no section header", oddConfig.Entries.Count, 2);
+                Check("files the first setting as ungrouped", oddConfig.Entries[0].Section, "(ungrouped)");
+
+                var minimal = Path.Combine(dir, "minimal.cfg");
+                File.WriteAllText(minimal, "JustKey = 1\r\n");
+                Check("reads a file with no metadata", ModConfigFile.Load(minimal).Entries.Count, 1);
+                Check("a setting with no metadata is accepted",
+                      ModConfigFile.Load(minimal).ProblemWith(ModConfigFile.Load(minimal).Entries[0], "2"), null);
+
+                Throws("a missing config file is an error, not an empty config",
+                        delegate { ModConfigFile.Load(Path.Combine(dir, "nope.cfg")); });
+
+                Check("a config path is the GUID under the config folder",
+                      ModConfigFile.PathFor(@"C:\BepInEx\config", "com.example.test"),
+                      @"C:\BepInEx\config\com.example.test.cfg");
+                Check("no GUID means no config path", ModConfigFile.PathFor(@"C:\config", null), null);
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch { }
+            }
+        }
+
+        private static ModConfigEntry Find(ModConfigFile config, string key)
+        {
+            foreach (var entry in config.Entries)
+            {
+                if (entry.Key == key) return entry;
+            }
+            throw new InvalidOperationException("no setting called " + key);
+        }
+
+        private static int LineCount(string text)
+        {
+            return text.Split(new[] { "\r\n" }, StringSplitOptions.None).Length;
+        }
+
+        /// <summary>A config file in the shape BepInEx actually writes, comments and all.</summary>
+        private const string SampleConfig =
+            "## Settings file was created by plugin Example v1.2.3\r\n" +
+            "## Plugin GUID: com.example.test\r\n" +
+            "\r\n" +
+            "[1 - General]\r\n" +
+            "\r\n" +
+            "## Which backend to use.\r\n" +
+            "## Passthrough leaves the game alone.\r\n" +
+            "## OllamaNative is Ollama's own endpoint.\r\n" +
+            "# Setting type: BackendMode\r\n" +
+            "# Default value: OpenAiCompatible\r\n" +
+            "# Acceptable values: Passthrough, OpenAiCompatible, OllamaNative\r\n" +
+            "Mode = OpenAiCompatible\r\n" +
+            "\r\n" +
+            "## Log every request.\r\n" +
+            "# Setting type: Boolean\r\n" +
+            "# Default value: false\r\n" +
+            "Debug = false\r\n" +
+            "\r\n" +
+            "## How wide the panel is here too, to prove keys may repeat.\r\n" +
+            "# Setting type: Integer\r\n" +
+            "# Default value: 1280\r\n" +
+            "Width = 1280\r\n" +
+            "\r\n" +
+            "[2 - Other]\r\n" +
+            "\r\n" +
+            "## Where the server is.\r\n" +
+            "# Setting type: String\r\n" +
+            "# Default value: http://127.0.0.1:11434/v1\r\n" +
+            "BaseUrl = http://127.0.0.1:11434/v1\r\n" +
+            "\r\n" +
+            "## How wide.\r\n" +
+            "Width = 1920\r\n";
 
         private static void Check<T>(string name, T actual, T expected)
         {

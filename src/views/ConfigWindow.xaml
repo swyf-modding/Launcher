@@ -1,0 +1,67 @@
+<Window x:Class="ScamWYF.Launcher.Views.ConfigWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Mod config"
+        Width="880" Height="700" MinWidth="620" MinHeight="460"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{StaticResource WindowBrush}"
+        TextElement.FontFamily="{StaticResource UiFont}"
+        TextElement.FontSize="12"
+        TextElement.Foreground="{StaticResource TextBrush}">
+
+    <!--
+        The settings editor for one mod.
+
+        Chrome here, settings built in code. A setting's editor is a checkbox, a row of chips or a text
+        box depending on what the config file says the setting is, and choosing between them is a
+        TemplateSelector and three DataTemplates to maintain something that is a dozen lines of "if" in a
+        method. The list is dynamic either way, so neither approach is more declarative in practice.
+    -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- header -->
+        <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,12">
+            <StackPanel>
+                <TextBlock x:Name="ModName" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock x:Name="ModFile" Style="{StaticResource SettingHint}" Margin="0,3,0,0"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <!-- settings -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16,12,10,12">
+            <StackPanel x:Name="Settings" />
+        </ScrollViewer>
+
+        <!-- footer -->
+        <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="Status" Grid.Column="0" VerticalAlignment="Center"
+                           TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                           Text="Nothing changed yet." />
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button x:Name="RevertButton" Content="Revert" Margin="0,0,8,0"
+                            Style="{StaticResource FlatButton}" Click="OnRevert" />
+                    <Button Content="Cancel" Margin="0,0,8,0" MinWidth="90"
+                            Style="{StaticResource FlatButton}" IsCancel="True" Click="OnCancel" />
+                    <Button x:Name="SaveButton" Content="Save" MinWidth="110" IsDefault="True"
+                            Style="{StaticResource AccentButton}" Click="OnSave" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

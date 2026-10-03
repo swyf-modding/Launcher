@@ -35,7 +35,7 @@ Completely automated. From a clean tree:
 ```powershell
 cd Launcher
 .\build.ps1                        # what CI will do; catch it before the tag
-.\tools\test-getmods.ps1          # 73 offline assertions
+.\tools\test-getmods.ps1          # the offline assertions
 git tag v1.2.3
 git push origin v1.2.3
 ```

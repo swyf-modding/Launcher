@@ -30,6 +30,19 @@ namespace ScamWYF.Launcher
             get { return System.IO.Path.Combine(Path, "BepInEx\\core"); }
         }
 
+        /// <summary>
+        /// The BepInEx folder itself, which is where configs live.
+        /// </summary>
+        /// <remarks>
+        /// Named here rather than derived at each call site. <see cref="BepInExCore"/> is two levels down,
+        /// and every caller that wanted the config folder had to walk back out of it - which is the sort
+        /// of thing that is correct until someone adds a level.
+        /// </remarks>
+        public string BepInExRoot
+        {
+            get { return System.IO.Path.Combine(Path, "BepInEx"); }
+        }
+
         public string PluginsFolder
         {
             get { return System.IO.Path.Combine(Path, "BepInEx\\plugins"); }

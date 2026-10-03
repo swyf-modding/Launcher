@@ -131,18 +131,37 @@ namespace ScamWYF.Launcher
 private void OnTabChanged(object sender, SelectionChangedEventArgs e)
         {
             // Two reasons to do nothing here. SelectionChanged fires once while the XAML is being
-            // constructed - before the views have been given a Host - and again before the window has
-            // been laid out, when a tab measures itself against a width it is about to lose. The first
-            // load is done by OnLoaded instead, once everything is wired.
+            // constructed - before the views have been given a Host - and the first load is done by
+            // OnLoaded instead, once everything is wired.
             if (!_shown) return;
 
-            // Deferred to the dispatcher, for the sizing reason above. It is still the right thing to do in
-            // WPF, which lays out lazily for the same reason WinForms did.
+            // The important one: SelectionChanged is a *bubbling* routed event, so every SelectionChanged
+            // raised by a ListView inside the selected tab arrives here too - the Mods and Log tabs both
+            // have one, and both clear their rows when they reload.
+            //
+            // That closed a loop. Reloading the Mods tab clears its list, the list's SelectionChanged
+            // bubbles up, this handler runs again with the same index, posts ShowTab, which reloads the
+            // Mods tab again - about twenty-five times a second, forever. It looked like three separate
+            // bugs: you could not select a row other than the first, because every pass reset the
+            // selection to row zero; the Mods tab flickered, because the list was rebuilt faster than it
+            // could be drawn; and the cursor flickered over the buttons, because UpdateButtons was
+            // setting IsEnabled on whichever button the pointer was over that fast.
+            //
+            // A real tab change always moves the index, and an inner list clearing its own selection
+            // never does, so comparing against the last index we reacted to separates the two exactly.
             var index = Tabs.SelectedIndex;
+            if (index == _lastShownTab) return;
+            _lastShownTab = index;
+
+            // Deferred to the dispatcher, so the tab has been measured before it reloads. A tab that was
+            // not selected at startup is only given its real width when it is first shown, and one that
+            // lays itself out in the same turn as the click measures the width it is about to lose.
             Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(delegate { ShowTab(index); }));
         }
 
-        private void ShowTab(int index)
+        private int _lastShownTab = -1;
+
+private void ShowTab(int index)
         {
             switch (index)
             {

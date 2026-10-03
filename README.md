@@ -170,6 +170,22 @@ would do by hand. Changes take effect on the next launch.
 A dll with no `[BepInPlugin]` is listed and marked, not hidden. The shared library is one, and seeing
 "unrecognised" for it would reasonably suggest something was broken.
 
+**Config…** opens the selected mod's settings for editing, if it has any.
+
+BepInEx has no configuration format this tool can read a schema from, so the editor is built from the file
+itself: the mod writes the type, the default and usually an explanation above every value, and that is the
+only description of the setting that exists. So it is shown rather than replaced. A yes/no setting is a
+checkbox, a short list of accepted values is a row of choices, and anything else is a text box.
+
+Saving rewrites only the lines whose values changed. Comments, blank lines, section order and anything the
+parser did not recognise survive untouched, so a file keeps the documentation the mod wrote for it. Values
+are checked before anything is written — against the list a setting declares, or true/false for a boolean —
+because the alternative is a config the game rejects on the next launch and silently falls back to its
+default.
+
+Saving is refused while the game is running. BepInEx writes a plugin's config as it shuts down, so an edit
+made during a session would be overwritten a moment later.
+
 **Log** shows `BepInEx\LogOutput.log` with the lines that matter picked out above the raw text. A
 preloader crash, before BepInEx starts, goes to `preloader_*.log` in the game folder instead, and the tab
 says so.
@@ -179,7 +195,7 @@ says so.
 ### Testing
 
 ```powershell
-.\tools\test-getmods.ps1            # 73 assertions, offline
+.\tools\test-getmods.ps1            # 114 assertions, offline
 .\tools\test-getmods.ps1 -Online    # 20 more, against the real GitHub API
 ```
 
@@ -208,6 +224,7 @@ Three of them, and all three exist because of how WPF fails:
 | A `Color` key assigned to a brush-typed property | A trigger whose `Setter` has the wrong value type. It throws **only when the trigger fires**, so on hover, on a scrollbar thumb, or when a control is disabled |
 | Hover every button on every tab | The same class of fault by any other route, and any other trigger that throws on interaction |
 | Run a script through the Setup tab | Touching a control from one of the threads the app does not own |
+| Config parse, validate and round trip | A settings edit that silently drops the documentation above it |
 
 The last two of those exist because of how WPF fails. A screenshot cannot hover anything, and a build
 cannot evaluate a trigger — so a green build once shipped a launcher that threw
@@ -290,7 +307,8 @@ src/
 |-- Dialogs.cs         Modal confirmations, themed; WPF's MessageBox cannot be
 |-- GameInstall.cs     Finding and probing an install
 |-- SetupRunner.cs     Running setup.ps1 and streaming its output
-|-- ModManager.cs      Enable, disable, delete - the file operations
+-- ModManager.cs      Enable, disable, delete - the file operations
+|-- ModConfig.cs       Reading, checking and rewriting a mod's BepInEx config
 |-- PluginScanner.cs   Reading [BepInPlugin] metadata with Cecil
 |-- PluginEntry.cs     One mod on disk
 |-- Http.cs            The only code that touches the network: https only, redirects checked by hand
@@ -299,8 +317,9 @@ src/
 `-- views/
     |-- SetupView      The Setup tab
     |-- ModsView       The Mods tab
-    |-- GetModsView    The Get mods tab
-    `-- LogView        The Log tab
+|-- GetModsView    The Get mods tab
+      |-- ConfigWindow   The per-mod settings editor
+      `-- LogView        The Log tab
 build.ps1              dotnet build, plus tag versioning and a two-file bin\
 tools/
 `-- test-getmods.ps1   Tests for the above: -Online also exercises a real download

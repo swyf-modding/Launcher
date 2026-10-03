@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -122,6 +123,50 @@ namespace ScamWYF.Launcher.Views
 
         private void OnRescan(object sender, RoutedEventArgs e) { Reload(); }
 
+        /// <summary>
+        /// Open the selected mod's config file for editing.
+        /// </summary>
+        /// <remarks>
+        /// Only the selected mod's own file. A mod writes its config under its GUID, which is also what
+        /// identifies it here, so there is nothing to guess - and nothing that would let this open an
+        /// arbitrary file.
+        /// </remarks>
+        private void OnConfig(object sender, RoutedEventArgs e)
+        {
+            var row = Selected;
+            if (row == null) return;
+
+            var path = ConfigPathFor(row.Entry);
+            if (path == null || !File.Exists(path))
+            {
+                Host.Status("That mod has no config file yet. A mod writes one the first time it runs.", false);
+                return;
+            }
+
+            ModConfigFile config;
+            try
+            {
+                config = ModConfigFile.Load(path);
+            }
+            catch (Exception ex)
+            {
+                Host.Status("Could not read the config: " + ex.Message, false);
+                return;
+            }
+
+            var window = new ConfigWindow(config, row.Name);
+
+            // Owner, so it is modal to this window and cannot be sent behind it - which is what makes
+            // "the file changed on disk" a thing that can only happen because the game wrote it.
+            window.Owner = Window.GetWindow(this);
+            window.ShowDialog();
+
+            if (window.DialogResult == true)
+            {
+                Host.Status("Saved " + Path.GetFileName(path) + ". Changes apply the next time the game starts.", true);
+            }
+        }
+
         private void OnOpenPlugins(object sender, RoutedEventArgs e)
         {
             Host.OpenFolder(Host.Install.PluginsFolder);
@@ -141,6 +186,7 @@ namespace ScamWYF.Launcher.Views
             EnableButton.IsEnabled = false;
             DisableButton.IsEnabled = false;
             DeleteButton.IsEnabled = false;
+            ConfigButton.IsEnabled = false;
 
             if (row == null)
             {
@@ -160,11 +206,38 @@ namespace ScamWYF.Launcher.Views
             var deletable = available || Host.Mods.CanDelete(row.Entry).Ok;
             DeleteButton.IsEnabled = deletable;
 
+            // Editing a config needs no moving of files, so it is not gated on the game being closed the
+            // way a toggle is - only on there being something to edit. The window itself refuses to save
+            // while the game runs, because BepInEx rewrites the file on the way out.
+            var configPath = ConfigPathFor(row.Entry);
+            ConfigButton.IsEnabled = configPath != null && File.Exists(configPath);
+            row.Note = ConfigButton.IsEnabled ? row.Note : WithNoConfig(row.Note, ConfigPathFor(row.Entry));
+
             // A disabled button with no stated reason is the worst outcome here: the person cannot tell
             // whether they need to close the game or whether the tool is broken. The note column is
             // where that explanation goes, since it stays visible after the selection moves.
             var anyEnabled = EnableButton.IsEnabled || DisableButton.IsEnabled || deletable;
             if (!anyEnabled && why != null && row.Note.Length == 0) row.Note = why;
+        }
+
+        /// <summary>Where the selected mod's config lives, or null when it has none to find.</summary>
+        private string ConfigPathFor(PluginEntry entry)
+        {
+            if (entry == null || string.IsNullOrEmpty(entry.Guid)) return null;
+
+            var folder = ModConfigFile.FolderFor(Host.Install.BepInExRoot);
+            return folder == null ? null : ModConfigFile.PathFor(folder, entry.Guid);
+        }
+
+        /// <summary>Explain an absent config once, without stamping over a note that says something else.</summary>
+        private static string WithNoConfig(string existing, string configPath)
+        {
+            const string message = "no config file for this mod";
+
+            if (existing == message || existing.StartsWith(message + " (")) return existing;
+            if (existing.Length != 0 && !existing.EndsWith(message)) return existing + "; " + message;
+
+            return message + " (a mod writes one the first time it runs)";
         }
 
         private void Toggle()

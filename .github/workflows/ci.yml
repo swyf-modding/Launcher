@@ -63,7 +63,7 @@ jobs:
       #
       # Checked statically instead, because that is the only way to cover the triggers a person has not
       # happened to touch. Every colour key gets exactly one legitimate use - the Color= attribute of the
-      # brush built from it - so any other use of one is the bug.
+# brush built from it - so any other use of one is the bug.
       - name: Check that colours are not used where a brush is required
         shell: pwsh
         run: |
@@ -73,9 +73,10 @@ jobs:
 
           if (-not $colorKeys) { throw 'no <Color> keys found - has the palette been renamed?' }
 
-          $files = @(Get-ChildItem src -Recurse -Filter *.xaml | ForEach-Object { $_.FullName })
           $bad = @()
 
+          # XAML: a colour key may only be used as the Color= attribute of the brush built from it.
+          $files = @(Get-ChildItem src -Recurse -Filter *.xaml | ForEach-Object { $_.FullName })
           foreach ($file in $files) {
               $text = Get-Content $file -Raw
               foreach ($key in $colorKeys) {
@@ -92,16 +93,34 @@ jobs:
               }
           }
 
-          if ($bad) {
-              $bad | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
-              # Assembled rather than written as a here-string: a here-string's terminator has to sit at
-              # the start of a line, which is a fight with a YAML block scalar's indentation.
-              throw ('A colour key is assigned to a brush-typed property. Add a SolidColorBrush for ' +
-                     'it beside the others and reference that, not the Color directly. WPF does not ' +
-                     'convert Color to Brush at runtime, and it only fails once the trigger fires.')
+          # C#: FindResource("SomethingColor") cast to a Brush is the same mistake, and it is not
+          # caught by the XAML pass above. This one is not hypothetical: an editor asked for
+          # "BorderColor" instead of "BorderBrush" and threw InvalidCastException the moment a row
+          # was drawn. A cast to Brush cannot be verified by reading the line, so the rule is simply
+          # that no code asks for a *Color key when it wants a brush.
+          $codeFiles = @(Get-ChildItem src -Recurse -Filter *.cs | ForEach-Object { $_.FullName })
+          foreach ($file in $codeFiles) {
+              $text = Get-Content $file -Raw
+              foreach ($key in $colorKeys) {
+                  $pattern = '\(\s*Brush\s*\)\s*(?:[A-Za-z.]*\.)?FindResource\(\s*"' +
+                             [regex]::Escape($key) + '"\s*\)'
+                  foreach ($m in [regex]::Matches($text, $pattern)) {
+                      $line = ($text.Substring(0, $m.Index) -split "`n").Count
+                      $rel = $file.Substring($PWD.Path.Length + 1)
+                      $bad += "$rel line $line : (Brush)FindResource(""$key"") - $key is a Color"
+                  }
+              }
           }
 
-          Write-Host "checked $($colorKeys.Count) colour keys across $($files.Count) XAML files"
+          if ($bad) {
+              $bad | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+              throw ('A colour key is being used where a brush is required.' +
+                     ' Add a SolidColorBrush for it beside the others and reference that.' +
+                     ' WPF does not convert Color to Brush at runtime, and a XAML trigger only' +
+                     ' fails once it fires.')
+          }
+
+          Write-Host "checked $($colorKeys.Count) colour keys across $($files.Count) XAML and $($codeFiles.Count) C# files"
 
       # Compiling is not a check. The exe is a GUI program, so the useful verification is that it
       # starts, resolves Mono.Cecil from beside itself, and finds the game - which is also the one
