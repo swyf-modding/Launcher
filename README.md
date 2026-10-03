@@ -279,9 +279,11 @@ is deterministic, so the bytes are the same either way.
 The zip holds both files — the exe and `Mono.Cecil.dll` beside it. Shipping one without the other
 gives an exe that dies on startup with a `FileNotFoundException`, so the release step checks for both.
 
-**The mods cannot use this workflow.** They compile against the game's own assemblies, so their release
-needs a self-hosted runner with the game installed; a `release.yml` there would be a workflow that can
-never succeed.
+**The mods cannot use this workflow.** They compile against the game's own assemblies, which a hosted
+runner cannot have, so their releases are cut by hand on a machine with the game — build, package both
+DLLs, `gh release create`. There is no self-hosted runner, and deliberately so: a self-hosted job with
+no runner registered does not fail, it queues and sits for 24 hours. See
+[RELEASING.md](RELEASING.md).
 
 The mods are cut by hand instead — build, package both DLLs, `gh release create`. The full procedure
 for all five repositories, including the submodule ordering that has to be right, is in

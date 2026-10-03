@@ -169,18 +169,26 @@ gh release list --repo swyf-modding/Mod-Handler
 gh api repos/swyf-modding/Mod-Handler/tags
 ```
 
-## Adding a self-hosted runner later
+## Why there is no CI job that builds the mods
 
-The mods' `build` job in CI is `workflow_dispatch` only, and that is on purpose. A self-hosted job with
-no runner registered does not fail — it queues and sits for 24 hours, leaving a stuck red job on every
-push. If you register one:
+Worth writing down, because it looks like an omission otherwise.
+
+A hosted runner cannot compile a mod: the build needs the game's own assemblies, and the game is not ours
+to redistribute. The obvious alternative is a self-hosted runner on a machine that has the game. There
+isn't one, and that is a decision rather than a gap — a self-hosted job with no runner registered does
+not *fail*, it queues, and GitHub cancels it 24 hours later. Every push to `main` left a job stuck for a
+day and the run red. Narrowing it to `workflow_dispatch` only moved the problem: the "Run workflow"
+button in the Actions tab then did exactly the same thing, on demand.
+
+So the mods' CI runs only what a hosted runner can do — the shared library's behaviour tests — and the
+build, the API surface check and the release are manual, against your own install. That is one command:
 
 ```powershell
-# on the machine with the game, in the mod repo
-.\config.cmd --url https://github.com/swyf-modding/Mod-Handler --token<TOKEN> --labels scamwyf
-.\run.cmd --install
+.\build.ps1 -NoCopy -Test
 ```
 
-Set the `SWYM_RUNNER` repository variable to `self-hosted, windows, scamwyf`, then add
-`github.ref == 'refs/heads/main' ||` back to the `if:` on the `build` job so it runs on push again.
-The comment in each workflow file says the same thing.
+If you ever do register a runner and want the compile automated, it is a small job: `runs-on:
+self-hosted`, the same steps as `build.ps1 -NoCopy -Test`, and `fetch-depth: 0` so the tag is present
+for the version stamping. Set `SWYG_GAME_DIR` on the runner so it does not depend on where Steam put
+things. Keep the `if:` excluding `pull_request` — a fork's pull request would otherwise run code from
+the fork on your machine.
