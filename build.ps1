@@ -1,76 +1,69 @@
 <#
     Builds ScamWYF.Launcher.exe.
 
-    Roslyn directly, like the other repos in this project: no NuGet, no .csproj, no restore step. The
-    reasons are the same ones that shaped them. It compiles against real reference assemblies rather
-    than whatever the developer happens to have, it needs no network, and the whole build is one
-    command someone can read.
+    A thin wrapper around `dotnet build`. The project is a normal SDK-style csproj, so this script is not
+    where the build happens:
 
-    This is a plain .NET Framework WinForms app, so unlike the mods it compiles against the reference
-    assemblies under "Reference Assemblies" and runs on any Windows with .NET Framework 4.x - no game
-    install, no BepInEx, no Mono. That matters for a tool whose job is to fix a broken game install:
-    it must not share a dependency with the thing it repairs.
+        dotnet build -c Release
+
+    is a complete, equivalent command. What this script adds is the part a plain build cannot do:
+    stamping the version from the nearest git tag, and reducing the output to the two files that get
+    published.
 
         .\build.ps1
-        .\build.ps1 -CscDll C:\path\to\csc.dll
+        .\build.ps1 -Configuration Release
         .\build.ps1 -Cecil "C:\...\BepInEx\core\Mono.Cecil.dll"
         .\build.ps1 -Version 1.2.3
 
-    Mono.Cecil is the one external dependency, and it is the same copy the game already loads, so
-    there is nothing extra to distribute: it is found in BepInEx\core and copied next to the exe.
-    Point -Cecil at it if your game lives somewhere unusual.
+    Why this used to compile Roslyn by hand, and why that changed
+    ---------------------------------------------------------------
+    The launcher was originally built with csc, no project file, no restore, for the same reasons the
+    other repos in this project are: real reference assemblies rather than whatever the developer has,
+    no network, one readable command. That was a reasonable trade while it was WinForms.
 
-    The version is taken from the nearest git tag, so a released build says which commit it came from
-    without anyone having to remember to edit a number in a source file. -Version overrides that, which
-    is what a build from a source archive with no .git needs.
+    It stopped being one when the UI became WPF. XAML has to be compiled by MSBuild's markup compiler,
+    which means a project file, so the csproj arrived regardless - and once it had, the hand-rolled
+    csc line was a second description of the same build that could disagree with the first. This is now
+    the only one.
+
+    WPF on net48 rather than a modern .NET
+    --------------------------------------
+    The target framework is deliberately .NET Framework 4.8. A net8/net10 build would be framework-
+    dependent too, but on a runtime that is not installed by default, so a player would have to install
+    something before the launcher would start. That is a bad thing to ask of someone whose game install
+    is already broken. net48 ships with every Windows 10 and 11, so the download stays two files and
+    runs on a clean machine.
+
+    Mono.Cecil
+    ----------
+    The one external dependency, and it is the same copy the game already loads, so there is nothing
+    extra to distribute: it is found in BepInEx\core and copied next to the exe. Point -Cecil at it if
+    your game lives somewhere unusual.
+
+    Version
+    -------
+    Taken from the nearest git tag, so a released build says which commit it came from without anyone
+    having to remember to edit a number in a source file. -Version overrides that, which is what a build
+    from a source archive with no .git needs.
 #>
 [CmdletBinding()]
 param(
-    [string]$CscDll,
+    [string]$Configuration = 'Release',
     [string]$Cecil,
-    [string]$Version,
-    [switch]$NoCopy
+    [string]$Version
 )
 
 $ErrorActionPreference = 'Stop'
 
-$outDir = Join-Path $PSScriptRoot 'bin'
+$repoRoot = $PSScriptRoot
+$outDir = Join-Path $repoRoot 'bin'
 $exe = Join-Path $outDir 'ScamWYF.Launcher.exe'
-
-# ---------------------------------------------------------------- Roslyn
-
-function Resolve-Csc {
-    param([string]$Explicit)
-
-    if ($Explicit) {
-        if (Test-Path $Explicit) { return $Explicit }
-        throw "No compiler at $Explicit"
-    }
-
-    # Inside the .NET SDK: the copy everyone has, and the one that runs identically everywhere.
-    $sdkRoots = @("${env:ProgramFiles}\dotnet\sdk", "$env:USERPROFILE\.dotnet\sdk", '/usr/share/dotnet/sdk', '/usr/lib/dotnet/sdk')
-    foreach ($root in $sdkRoots) {
-        if (-not $root -or -not (Test-Path $root)) { continue }
-        $dll = Get-ChildItem -Path (Join-Path $root '*\Roslyn\bincore\csc.dll') -ErrorAction SilentlyContinue |
-            Sort-Object FullName -Descending | Select-Object -First 1
-        if ($dll) { return $dll.FullName }
-    }
-
-    throw @"
-Could not find a C# compiler.
-
-Install the .NET SDK, or pass -CscDll pointing at one:
-  dotnet /usr/lib/dotnet/sdk/*/Roslyn/bincore/csc.dll
-"@
-}
-
-$csc = Resolve-Csc $CscDll
 
 # ---------------------------------------------------------------- Mono.Cecil
 
 # The launcher reads plugin metadata with Cecil. Taking it from the game's own BepInEx\core keeps the
-# tool dependency-free: it is already installed by the thing the tool installs, and the same version
-# the mods were compiled against.
+# tool dependency-free: it is already installed by the thing the tool installs, and it is the same
+# version the mods were compiled against.
 function Resolve-Cecil {
     param([string]$Explicit)
 
@@ -81,7 +74,7 @@ function Resolve-Cecil {
 
     # A copy staged next to the sources, which is how a continuous build gets it without a game
     # install. Checked first so a build agent does not silently pick up a different version.
-    $staged = Join-Path $PSScriptRoot 'vendor\Mono.Cecil.dll'
+    $staged = Join-Path $repoRoot 'vendor\Mono.Cecil.dll'
     if (Test-Path $staged) { return $staged }
 
     $game = $env:SWYG_GAME_DIR
@@ -206,7 +199,7 @@ function Resolve-Version {
         return ConvertFrom-Describe '0.0.0' ''
     }
 
-    $root = & git -C $PSScriptRoot rev-parse --show-toplevel 2>$null
+    $root = & git -C $repoRoot rev-parse --show-toplevel 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $root) {
         Write-Warning "Not a git checkout, so the version cannot be read from a tag. Pass -Version to stamp one."
         return ConvertFrom-Describe '0.0.0' ''
@@ -214,13 +207,13 @@ function Resolve-Version {
 
     # --always so an untagged tree still describes rather than failing, and --dirty so a build from a
     # modified tree cannot be mistaken for a release.
-    $describe = & git -C $PSScriptRoot describe --tags --dirty --always 2>$null
+    $describe = & git -C $repoRoot describe --tags --dirty --always 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $describe) {
         Write-Warning "git describe failed, so the version could not be read. Pass -Version to stamp one."
         return ConvertFrom-Describe '0.0.0' ''
     }
 
-    $sha = & git -C $PSScriptRoot rev-parse --short HEAD 2>$null
+    $sha = & git -C $repoRoot rev-parse --short HEAD 2>$null
     return ConvertFrom-Describe $describe.Trim() "$($sha.Trim())"
 }
 
@@ -229,113 +222,79 @@ if ($versionInfo.Dirty) {
     Write-Host "  note: the working tree has uncommitted changes, so this is not a clean release build." -ForegroundColor Yellow
 }
 
-# ---------------------------------------------------------------- references
+# ---------------------------------------------------------------- build
 
-# The .NET Framework reference assemblies, so the compiler sees exactly what any Windows with
-# .NET Framework 4.x will see. Compiling against the GAC instead would work on this machine and then
-# fail on a player's, which is the failure mode worth spending two lines to avoid.
-$frameworkBase = Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies\Microsoft\Framework\.NETFramework'
-$refRoot = Join-Path $frameworkBase 'v4.8'
-if (-not (Test-Path $refRoot)) {
-    # Sorted by parsed version rather than by name: a name sort puts v4.9 above v4.10, and would
-    # happily pick an older reference assembly than the one already on the machine.
-    $found = Get-ChildItem $frameworkBase -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '^v(\d+)\.(\d+)' } |
-        Sort-Object { [version]$_.Name.TrimStart('v') } -Descending |
-        Select-Object -First 1
-    if ($found) { $refRoot = $found.FullName }
+if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+    throw @"
+dotnet was not found on PATH.
+
+The launcher is built with the .NET SDK, which is also what builds the mods in this project:
+
+  https://dotnet.microsoft.com/download
+"@
 }
-
-if (-not (Test-Path $refRoot)) {
-    throw "No .NET Framework reference assemblies found. On Windows they ship with Visual Studio or the .NET SDK."
-}
-
-$references = @(
-    (Join-Path $refRoot 'mscorlib.dll')
-    (Join-Path $refRoot 'System.dll')
-    (Join-Path $refRoot 'System.Core.dll')
-    (Join-Path $refRoot 'System.Drawing.dll')
-    (Join-Path $refRoot 'System.Windows.Forms.dll')
-    # For the Get mods tab. All part of .NET Framework itself, not extra downloads: the JSON one reads
-    # GitHub's release listing, the other unpacks a downloaded zip. Newtonsoft is deliberately not used -
-    # it lives in the game's Managed folder, and a tool that repairs a game install must not share a
-    # dependency with the thing it repairs.
-    (Join-Path $refRoot 'System.Web.Extensions.dll')
-    # Both compression assemblies: FileSystem has ZipFile, Compression has the ZipArchive it returns.
-    # Referencing the pair emits CS1701, a version-unification note between the reference assemblies and
-    # what FileSystem was compiled against. It is benign on .NET Framework 4.8, where both versions are
-    # present, and there is no way to reference one without it.
-    (Join-Path $refRoot 'System.IO.Compression.dll')
-    (Join-Path $refRoot 'System.IO.Compression.FileSystem.dll')
-    $cecil
-)
-
-foreach ($r in $references) {
-    if (-not (Test-Path $r)) { throw "Missing reference: $r" }
-}
-
-# ---------------------------------------------------------------- compile
-
-New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-
-# Generated rather than committed, because it is derived from the tag and a stale copy checked in next
-# to the sources is exactly the drift this replaces. obj\ is gitignored.
-$objDir = Join-Path $PSScriptRoot 'obj'
-New-Item -ItemType Directory -Force -Path $objDir | Out-Null
-$assemblyInfo = Join-Path $objDir 'AssemblyInfo.g.cs'
-
-@"
-// Generated by build.ps1 from the git tag. Do not edit, and do not commit - this file is obj\.
-[assembly: System.Reflection.AssemblyTitle("ScamWYF.Launcher")]
-[assembly: System.Reflection.AssemblyProduct("ScamWYF.Launcher")]
-[assembly: System.Reflection.AssemblyCompany("")]
-[assembly: System.Reflection.AssemblyCopyright("Copyright (c) 2026 Ras_rap")]
-[assembly: System.Reflection.AssemblyConfiguration("")]
-[assembly: System.Reflection.AssemblyVersion("$($versionInfo.Numeric)")]
-[assembly: System.Reflection.AssemblyFileVersion("$($versionInfo.Numeric)")]
-[assembly: System.Reflection.AssemblyInformationalVersion("$($versionInfo.Informational)")]
-"@ | Set-Content -LiteralPath $assemblyInfo -Encoding UTF8
-
-$sources = @(
-    Get-ChildItem (Join-Path $PSScriptRoot 'src') -Filter *.cs | ForEach-Object { $_.FullName }
-    $assemblyInfo
-)
-if (-not $sources) { throw "No sources in src\" }
-
-$args = @(
-    '-target:winexe'
-    '-platform:anycpu'
-    '-nostdlib+'
-    '-langversion:7.3'
-    '-optimize+'
-    # Deterministic so the same commit compiles to the same bytes, which is what makes it meaningful to
-    # publish a build and say afterwards which commit it came from.
-    '-deterministic+'
-    '-warnaserror-'
-    '-warn:4'
-    '-define:RELEASE'
-    "-out:$exe"
-    ($references | ForEach-Object { "-reference:$_" })
-    '-utf8output'
-) + $sources
 
 Write-Host "=== building ScamWYF.Launcher"
-Write-Host "  compiler:  $csc"
-Write-Host "  cecil:     $cecil"
-Write-Host "  framework: $refRoot"
-Write-Host "  version:   $($versionInfo.Informational)"
+Write-Host "  sdk:      $((& dotnet --version).Trim())"
+Write-Host "  cecil:    $cecil"
+Write-Host "  version:  $($versionInfo.Informational)"
 
-if ($csc -like '*.dll') {
-    & dotnet $csc @args
-} else {
-    & $csc @args
+# Checked before the build rather than after it. MSBuild retries a locked output file ten times over
+# about ten seconds and then fails with MSB3021, which says the file is locked but not by what. The
+# usual cause is a launcher still open from last time, which is worth naming.
+$running = @(Get-Process -Name 'ScamWYF.Launcher' -ErrorAction SilentlyContinue)
+if ($running.Count) {
+    throw @"
+A ScamWYF.Launcher process is still running (PID $($running.Id -join ', ')), and it has bin\ScamWYF.Launcher.exe open.
+
+Close it and build again. The exe cannot be replaced while it is running.
+"@
 }
 
-if ($LASTEXITCODE -ne 0) { throw "ScamWYF.Launcher failed to compile (exit $LASTEXITCODE)" }
+# Output straight into bin\ rather than bin\Release\net48\. The project file's default is fine for
+# `dotnet build` on its own; this keeps the published path, and everything that knows it, unchanged.
+& dotnet build (Join-Path $repoRoot 'Launcher.csproj') `
+    --configuration $Configuration `
+    --nologo `
+    --verbosity quiet `
+    -p:OutputPath="$outDir" `
+    -p:AppendTargetFrameworkToOutputPath=false `
+    -p:AssemblyVersion="$($versionInfo.Numeric)" `
+    -p:FileVersion="$($versionInfo.Numeric)" `
+    -p:InformationalVersion="$($versionInfo.Informational)"
+
+if ($LASTEXITCODE -ne 0) { throw "ScamWYF.Launcher failed to build (exit $LASTEXITCODE)" }
+
+if (-not (Test-Path $exe)) { throw "Build reported success but $exe is missing." }
+
+# Cecil next to the exe, so the tool is two files and finds its dependency without a search. The csproj
+# copies it too, but doing it here means -Cecil is honoured: pointing at a different copy changes the
+# one that ships.
+Copy-Item $cecil (Join-Path $outDir 'Mono.Cecil.dll') -Force
+
+# The SDK writes an app.config for any .NET Framework project, and there is no property that stops it:
+# both AutoGenerateBindingRedirects and GenerateAppConfig are ignored for this. Its entire contents are a
+# supportedRuntime line naming .NET Framework 4.8, which is what the executable already targets and what
+# every Windows 10 and 11 has by default.
+#
+# Removed rather than shipped, because the download is two files and has been since 1.0.0 - the README,
+# the release notes and the release workflow all say so, and quietly adding a third file to bin\ would
+# make zipped-up bin\ folders disagree with the published ones for no benefit.
+$generatedConfig = Join-Path $outDir 'ScamWYF.Launcher.exe.config'
+if (Test-Path $generatedConfig) {
+    Remove-Item $generatedConfig -Force
+    Write-Host "  (removed the SDK-generated app.config, which net48 does not need)" -ForegroundColor DarkGray
+}
+
+# ---------------------------------------------------------------- report
+
+Write-Host ""
 Write-Host "  Built $exe" -ForegroundColor Green
 
-# Cecil next to the exe, so the tool is two files and finds its dependency without a search.
-Copy-Item $cecil (Join-Path $outDir 'Mono.Cecil.dll') -Force
+Get-ChildItem $outDir -File |
+    Where-Object { $_.Name -match '^ScamWYF\.Launcher\.(exe|dll|exe\.config)$|^Mono\.Cecil\.dll$' } |
+    Sort-Object Name |
+    ForEach-Object { "    {0,-28} {1,9:N0} bytes" -f $_.Name, $_.Length }
 
 if (Test-Path (Join-Path $outDir 'ScamWYF.Launcher.pdb')) {
     Write-Host "  (pdb written)" -ForegroundColor DarkGray

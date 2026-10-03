@@ -1,0 +1,441 @@
+<!--
+    The launcher's palette and control styles.
+
+    The colours are mod-lib's UiTheme, which the shared library reads from the game's live theme and
+    falls back to these. So the launcher and the in-game menu it opens are one visual system rather than
+    two, and if the game ever changes its colours there is one file to change instead of a set of
+    hard-coded greys scattered across four views.
+
+    Dark and low-chroma on purpose: a tool that sits in front of a game should recede. It is mostly read
+    at a glance to answer "is my install fine".
+
+    This file exists because of what it replaces. The WinForms version needed three subclassed controls -
+    a button, a tab strip and a list view - purely to draw chrome the framework had already coloured from
+    system brushes, because setting BackColor does nothing to chrome a control draws itself. Scrollbars
+    were the worst of it and could not be themed at all. Here every one of those is a Style, which is the
+    whole reason for the move.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- ============================================================ palette -->
+
+    <Color x:Key="WindowColor">#212126</Color>
+    <Color x:Key="SurfaceColor">#2B2B32</Color>
+    <Color x:Key="SurfaceShadedColor">#26262C</Color>
+    <Color x:Key="FieldColor">#15151A</Color>
+    <Color x:Key="TextColor">#E6E6EA</Color>
+    <Color x:Key="MutedColor">#9E9EAA</Color>
+    <Color x:Key="BorderColor">#3A3A44</Color>
+    <Color x:Key="ButtonFaceColor">#383842</Color>
+    <Color x:Key="ButtonHoverColor">#4C4C58</Color>
+    <Color x:Key="AccentColor">#296BB8</Color>
+    <Color x:Key="AccentMutedColor">#243044</Color>
+    <Color x:Key="GoodColor">#5FC18A</Color>
+    <Color x:Key="WarnColor">#F3C259</Color>
+    <Color x:Key="BadColor">#F36B66</Color>
+
+    <SolidColorBrush x:Key="WindowBrush"        Color="{StaticResource WindowColor}" />
+    <SolidColorBrush x:Key="SurfaceBrush"       Color="{StaticResource SurfaceColor}" />
+    <SolidColorBrush x:Key="SurfaceShadedBrush" Color="{StaticResource SurfaceShadedColor}" />
+    <SolidColorBrush x:Key="FieldBrush"         Color="{StaticResource FieldColor}" />
+    <SolidColorBrush x:Key="TextBrush"          Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="MutedBrush"         Color="{StaticResource MutedColor}" />
+    <SolidColorBrush x:Key="BorderBrush"        Color="{StaticResource BorderColor}" />
+    <SolidColorBrush x:Key="ButtonFaceBrush"    Color="{StaticResource ButtonFaceColor}" />
+    <SolidColorBrush x:Key="AccentBrush"        Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="AccentMutedBrush"   Color="{StaticResource AccentMutedColor}" />
+    <SolidColorBrush x:Key="GoodBrush"          Color="{StaticResource GoodColor}" />
+    <SolidColorBrush x:Key="WarnBrush"          Color="{StaticResource WarnColor}" />
+    <SolidColorBrush x:Key="BadBrush"           Color="{StaticResource BadColor}" />
+
+    <!-- ============================================================ metrics -->
+
+    <!-- Declared with sys: rather than x: because the 2006 x: namespace has no Double. The prefix has to
+         be mapped on the root: XAML does not allow an element to declare the namespace it is named with,
+         and when that is attempted the resource silently resolves to an empty string rather than failing
+         loudly - which then shows up much later as "string cannot be converted to Length". -->
+    <sys:Double x:Key="ControlHeight">30</sys:Double>
+
+    <Thickness x:Key="PagePadding">16</Thickness>
+    <Thickness x:Key="CardPadding">8</Thickness>
+    <CornerRadius x:Key="SmallRadius">3</CornerRadius>
+
+    <!-- ============================================================ typography -->
+
+    <FontFamily x:Key="UiFont">Segoe UI</FontFamily>
+    <FontFamily x:Key="MonoFont">Consolas</FontFamily>
+
+    <Style x:Key="HeadingText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+
+    <Style x:Key="StrongText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- Explanatory text. Deliberately smaller and quieter than everything else. -->
+    <Style x:Key="NoteText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,8,0,0" />
+    </Style>
+
+    <!-- ============================================================ scrollbar -->
+
+    <!--
+        Themed, which WinForms could not do at all. The stock scrollbar was the last light thing left in
+        the dark UI. Repeat buttons are hidden and the thumb is the whole affordance, so a narrow bar
+        reads as a handle rather than as a control with three arrows.
+    -->
+    <Style x:Key="ScrollThumb" TargetType="Thumb">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border x:Name="Bar" Background="{StaticResource ButtonFaceBrush}"
+                            CornerRadius="4" Margin="3" />
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bar" Property="Background" Value="{StaticResource ButtonHoverColor}" />
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="Bar" Property="Background" Value="{StaticResource MutedBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="ScrollBar">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Width" Value="11" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Grid Background="Transparent">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False" />
+                            </Track.DecreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource ScrollThumb}" />
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False" />
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <!--
+                            IsDirectionReversed is only right for a vertical bar. Left set for both, the
+                            horizontal one puts its thumb at the far right when the view is at the start
+                            and dragging it right scrolls backwards - which showed up as a stray light
+                            block in the corner of the raw log box.
+                        -->
+                        <Trigger Property="Orientation" Value="Horizontal">
+                            <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================ button -->
+
+    <Style x:Key="FlatButton" TargetType="Button">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Background" Value="{StaticResource ButtonFaceBrush}" />
+        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="Height" Value="{StaticResource ControlHeight}" />
+        <Setter Property="MinWidth" Value="90" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Face"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="{StaticResource SmallRadius}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Face" Property="Background" Value="{StaticResource ButtonHoverColor}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Face" Property="Opacity" Value="0.75" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Face" Property="Background" Value="{StaticResource WindowBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    </Style>
+
+    <!-- ============================================================ input -->
+
+    <Style TargetType="TextBox">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Background" Value="{StaticResource FieldBrush}" />
+        <Setter Property="CaretBrush" Value="{StaticResource TextBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="Padding" Value="8,6" />
+        <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Edge" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            SnapsToDevicePixels="True">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Edge" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsReadOnly" Value="True">
+                            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- A checkbox drawn rather than themed, because the stock one is a light glyph on a light box. -->
+    <Style TargetType="CheckBox">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <StackPanel Orientation="Horizontal" Background="Transparent">
+                        <Border x:Name="Box" Width="14" Height="14" VerticalAlignment="Center"
+                                Background="{StaticResource FieldBrush}"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="2">
+                            <Path x:Name="Tick" Data="M 2,6 L 5,9 L 10,3" Stroke="{StaticResource TextBrush}"
+                                  StrokeThickness="1.6" Visibility="Collapsed"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ContentPresenter Margin="7,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="Box" Property="Background" Value="{StaticResource AccentBrush}" />
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource MutedBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================ tab strip -->
+
+    <Style x:Key="TabHeader" TargetType="TabItem">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabItem">
+                    <Grid>
+                        <Border x:Name="Face" Background="Transparent" Padding="18,0">
+                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center"
+                                              HorizontalAlignment="Center" />
+                        </Border>
+                        <!-- An underline rather than a raised border: it marks the selection without
+                             adding chrome, which was the whole complaint about the old strip. -->
+                        <Border x:Name="Mark" Height="2" VerticalAlignment="Bottom"
+                                Background="{StaticResource AccentBrush}" Visibility="Collapsed" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Mark" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="Face" Property="Background" Value="{StaticResource SurfaceBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Face" Property="Background" Value="{StaticResource SurfaceShadedBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="TabControl">
+        <Setter Property="Background" Value="{StaticResource WindowBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="ItemContainerStyle" Value="{StaticResource TabHeader}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabControl">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <!-- The strip's own background, which the stock template paints in the system
+                             colour and which is why a dark app had a light band along the top. -->
+                        <Border Grid.Row="0" Background="{StaticResource WindowBrush}"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                            <TabPanel IsItemsHost="True" Margin="0,0,0,-1" />
+                        </Border>
+                        <Border Grid.Row="1" Background="{StaticResource WindowBrush}">
+                            <ContentPresenter ContentSource="SelectedContent" />
+                        </Border>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================ list -->
+
+    <!--
+        Header and cell text for the column tables.
+
+        The rows are drawn by an ItemTemplate holding a Grid, not by GridView, and that is not a
+        preference. GridViewColumn.Width is converted by LengthConverter, which is a plain double
+        converter and has no idea what "*" means - so the one thing a table like this needs, a last
+        column that takes up whatever width is left, cannot be expressed at all. Asking for it fails at
+        load time with "'*' string cannot be converted to Length".
+
+        A Grid with SharedSizeGroup does support star sizing, which is what the views use instead. The
+        header is a separate row above the list rather than a real column header, which costs nothing
+        here: horizontal scrolling is switched off, so a header that stayed put would look identical.
+    -->
+    <Style x:Key="ColumnHeaderText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="8,0" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <!-- No Foreground setter on purpose: a cell takes its colour from the row it is in, which is how a
+         disabled mod or a disabled dependency is shown without a second template. -->
+    <Style x:Key="CellText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="8,0" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <!-- The rule under the column names, so the header reads as a header without a raised panel. -->
+    <Style x:Key="ColumnHeaderRule" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource BorderBrush}" />
+        <Setter Property="Height" Value="1" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <Style TargetType="ListView">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <!-- Templated rather than restyled, because the stock list template repaints itself in a
+                     system colour when the control is disabled. Everything here greys out while a download
+                     or a script run is going, so the tab flashed white for the duration of it. A tab that
+                     goes pale while it is working is the opposite of reassuring. -->
+                <ControlTemplate TargetType="ListView">
+                    <Border x:Name="Edge"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            SnapsToDevicePixels="True">
+                        <ScrollViewer x:Name="PART_ScrollViewer"
+                                      Focusable="False"
+                                      HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                      VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}"
+                                      CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}">
+                            <ItemsPresenter />
+                        </ScrollViewer>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Edge" Property="Background" Value="{StaticResource SurfaceShadedBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="ListViewItem">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListViewItem">
+                    <!-- The stock template draws its own alternating tint and selection in system
+                         colours, so it is replaced rather than restyled. -->
+                    <Border x:Name="Row" Background="Transparent" SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Stretch" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="{StaticResource SurfaceShadedBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="{StaticResource AccentMutedBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

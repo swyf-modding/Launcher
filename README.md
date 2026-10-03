@@ -11,7 +11,7 @@
 
 ![C#](https://img.shields.io/badge/C%23-512BD4?style=for-the-badge&logo=csharp&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-512BD4?style=for-the-badge&logo=dotnet&logoColor=white)
-![WinForms](https://img.shields.io/badge/WinForms-512BD4?style=for-the-badge)
+![WPF](https://img.shields.io/badge/WPF-512BD4?style=for-the-badge)
 ![Mono.Cecil](https://img.shields.io/badge/Mono.Cecil-0.11.6-9a3d3d?style=for-the-badge)
 
 </div>
@@ -99,22 +99,31 @@ There is nothing to install. `bin\` holds two files and both are yours to move w
 ```powershell
 git clone https://github.com/swyf-modding/Launcher.git
 cd Launcher
-.\build.ps1
-.\build.ps1 -NoCopy        # build without installing
+dotnet build -c Release    # a complete build on its own
+.\build.ps1                # the same, plus tag versioning and a two-file bin\
 .\build.ps1 -Cecil C:\path\to\Mono.Cecil.dll
 .\build.ps1 -Version 1.2.3 # stamp a version rather than reading the tag
 ```
 
-Roslyn directly, like the other projects here: no NuGet, no `.csproj`, no restore.
+An SDK-style project — `Launcher.csproj` — like the mods. No NuGet packages and no restore step: the only
+external dependency is [Mono.Cecil](vendor/README.md), staged in `vendor\` and referenced by path, so the
+build needs neither network nor game.
 
-**This is a plain .NET Framework WinForms app, and that is a deliberate difference from the mods.** The
-mods compile against the game's own assemblies; this compiles against the .NET Framework 4.8 reference
-assemblies and needs no game install at all. A tool whose job is to repair a broken game install cannot
-share a dependency with the thing it repairs.
+`build.ps1` is a thin wrapper around `dotnet build`. It adds the two things a plain build cannot do —
+stamping the version from the nearest git tag, and reducing `bin\` to the two published files — and
+`dotnet build -c Release` remains a complete, equivalent command. It used to compile Roslyn by hand with
+no project file; that stopped being sensible when the UI became WPF, because XAML has to be compiled by
+MSBuild's markup compiler, so a `.csproj` arrived regardless and the hand-rolled `csc` line became a
+second description of the same build that could disagree with the first.
 
-The one external dependency is [Mono.Cecil](vendor/README.md), staged in `vendor\` so the build needs
-neither network nor game, and pinned rather than floating so a release cannot ship against a different
-Cecil than the one it was tested with.
+**This targets the .NET Framework 4.8 reference assemblies and needs no game install at all.** The mods
+compile against the game's own assemblies; this does not. A tool whose job is to repair a broken game
+install cannot share a dependency with the thing it repairs.
+
+net48 rather than a modern .NET is deliberate. A `net8.0`/`net10.0` build would be framework-dependent
+too, but on a runtime that is not present by default, so a player whose game install is already broken
+would have to install something before this would start. .NET Framework 4.8 ships with every Windows 10
+and 11, so the download stays two files and runs on a clean machine.
 
 The build is deterministic: the same commit compiles to the same bytes, which is what makes it worth
 saying afterwards exactly which commit a published binary came from.
@@ -170,12 +179,29 @@ says so.
 ### Testing
 
 ```powershell
-.\build.ps1
+.\tools\test-getmods.ps1            # 73 assertions, offline
+.\tools\test-getmods.ps1 -Online    # 20 more, against the real GitHub API
 ```
 
+```powershell
+dotnet run --project tests\Launcher.Tests.csproj -c Release
+```
+
+is an equivalent command for the offline run. The two suites are separate programs rather than one with a
+filter, and both compile the app's own sources rather than referencing the built launcher — so the tests
+cannot pass against a stale copy of the logic.
+
 Then check the three things a build alone would not: that it compiles, that Mono.Cecil was copied next to
-the exe, and that it starts. That last one matters because a WinForms app that throws in its constructor
-exits immediately — surviving a few seconds *is* the assertion, and it is what the CI workflow does.
+the exe, and that it starts **and creates a window**. That last part matters more in WPF than it did in
+WinForms. WPF resolves styles, templates and pack URIs at load time from compiled XAML, so a mistake in a
+`.xaml` file is not a compile error — the build stays green and the window fails to appear when it opens.
+Requiring a real window handle is what catches that, and it is why the CI workflow does this rather than
+leaving it to be noticed.
+
+Not covered by tests, and honestly so: the views themselves. The tests are about what happens to files on
+disk — zip-slip refused, a checksum mismatch caught, an enable/disable round trip — and the UI is
+presentation over logic that is tested directly. What that leaves untested is layout and interaction, which
+is checked by running it.
 
 Verified against a real install: the probes report `ready`, both installed mods appear with their real
 names and versions, and the log tab picks the BepInEx channel lines out of the raw text.
@@ -191,10 +217,14 @@ No game DLL belongs in this repository or in a GitHub release.
 | Scam With Your Friends | `v82-playtest` |
 | Unity | `6000.3.10f1` |
 | BepInEx | `5.4.23.5`, Mono preloader |
-| Target framework | .NET Framework 4.8 (WinForms) |
+| Target framework | .NET Framework 4.8 (WPF) |
 | C# language level | `7.3` |
 | Mono.Cecil | `0.11.6`, `net40` |
 | Platform | Windows x64 |
+
+The C# language level is `7.3` and matches the mods. It is old for WPF, and that is accepted rather than
+fixed here: changing the language level is a separate decision from changing the UI framework, and mixing
+the two makes the port harder to review than it needs to be.
 
 Other game builds are untested. The launcher probes what it finds rather than assuming a layout, so an
 unexpected build will usually still work — it just reports what it actually sees.
@@ -225,41 +255,59 @@ both of which matter for a tool whose job includes deleting mods.
 ## Project Structure
 
 ```text
+Launcher.csproj        The project. net48 + WPF, and the only external reference is vendor\Mono.Cecil.dll
 src/
-|-- App.cs             The window, and launching the game
-|-- Theme.cs           The palette, and the three controls WinForms will not recolour
+|-- App.xaml(.cs)      Entry point, and the unhandled-exception reporter
+|-- MainWindow.xaml    The four tabs, the status line, the Play button
+|-- MainWindow.xaml.cs  Also the host the views talk to: status, busy flag, re-read both mod tabs
+|-- Theme.xaml         The palette and every control style - see "How it looks"
+|-- Dialogs.cs         Modal confirmations, themed; WPF's MessageBox cannot be
 |-- GameInstall.cs     Finding and probing an install
 |-- SetupRunner.cs     Running setup.ps1 and streaming its output
-|-- SetupTab.cs        The Setup tab
 |-- ModManager.cs      Enable, disable, delete - the file operations
 |-- PluginScanner.cs   Reading [BepInPlugin] metadata with Cecil
 |-- PluginEntry.cs     One mod on disk
-|-- ModsTab.cs         The Mods tab
 |-- Http.cs            The only code that touches the network: https only, redirects checked by hand
 |-- ModCatalogue.cs    The known mods, and what GitHub says their latest release is
 |-- ModInstaller.cs    Download, unpack, verify, and only then install
-|-- GetModsTab.cs      The Get mods tab
-`-- LogTab.cs          The Log tab
-build.ps1              Compiles with raw csc
+`-- views/
+    |-- SetupView      The Setup tab
+    |-- ModsView       The Mods tab
+    |-- GetModsView    The Get mods tab
+    `-- LogView        The Log tab
+build.ps1              dotnet build, plus tag versioning and a two-file bin\
 tools/
 `-- test-getmods.ps1   Tests for the above: -Online also exercises a real download
-tests/                 GetModsTests.cs (offline) and OnlineModTests.cs (needs network)
+tests/                 Launcher.Tests.csproj, GetModsTests.cs (offline), OnlineModTests.cs (needs network)
 vendor/                Mono.Cecil, staged and pinned
 ```
 
+The split between `src\` and `src\views\` is the UI-free half against the UI. Everything the tests compile
+is the former, which is why `tests\Launcher.Tests.csproj` can build a test binary with no WPF at all.
+
 ### How it looks
 
-Dark, low-chroma, and the same palette the in-game menu uses — mod-lib's `UiTheme`, which reads the
-game's live colours and falls back to these. So the launcher and the menu it opens are one system
-rather than two, and there is one file to change rather than a set of greys scattered through four tabs.
+Dark, low-chroma, and the same palette the in-game menu uses — mod-lib's `UiTheme`, which reads the game's
+live colours and falls back to these. So the launcher and the menu it opens are one system rather than
+two, and there is one file to change rather than a set of greys scattered through four tabs.
 
-Three controls are subclassed, and they are the three WinForms defaults that ignore `BackColor` and
-draw their own chrome from system colours: the button, the tab strip, and the list view. Setting
-`BackColor` on a stock control leaves a light grey strip along the top of a dark form, which is most of
-what "looks like a 1998 app" actually is.
+Everything visual is a `Style` or a `ControlTemplate` in `Theme.xaml`. That is the whole reason for the
+move off WinForms, which needed three subclassed controls purely to draw chrome the framework had already
+coloured from system brushes — setting `BackColor` on a stock control does nothing to chrome it draws
+itself, which is most of what "looks like a 1998 app" actually is. Scrollbars were the worst of it and
+could not be themed at all; here they are a template, which is also how the last light thing in the window
+was dealt with.
 
-The window is 1060x720 because the content needs it. A row of checks with a detail column is not
-readable at 940x640, and the answer to that is not a narrower column.
+One consequence worth knowing before editing a view: the column tables are **not** `GridView`.
+`GridViewColumn.Width` is converted by a plain double converter that has no idea what `*` means, so the
+one thing these tables need — a last column that fills the remaining width — cannot be expressed, and
+asking for it fails at load with `'*' string cannot be converted to Length`. Each table is a header `Grid`
+plus an `ItemTemplate` whose columns are tied together by `SharedSizeGroup`, which does support star
+sizing. Horizontal scrolling is off, so a header that stays put while the rows scroll looks identical to
+one that moves.
+
+The window is 1060x720 because the content needs it. A row of checks with a detail column is not readable
+at 940x640, and the answer to that is not a narrower column.
 
 ---
 

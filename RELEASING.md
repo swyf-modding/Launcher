@@ -34,7 +34,8 @@ Completely automated. From a clean tree:
 
 ```powershell
 cd Launcher
-.\build.ps1 -NoCopy -Test          # what CI will do; catch it before the tag
+.\build.ps1                        # what CI will do; catch it before the tag
+.\tools\test-getmods.ps1          # 73 offline assertions
 git tag v1.2.3
 git push origin v1.2.3
 ```
@@ -92,7 +93,7 @@ tagging after building gives you a binary that reports `untagged`.
 ```powershell
 cd ..\Mod-Handler
 git tag v1.2.0
-.\build.ps1 -NoCopy -Test
+.\build.ps1
 ```
 
 `-Test` matters here. It runs the API surface check, which catches a mod calling a library member
@@ -184,11 +185,11 @@ So the mods' CI runs only what a hosted runner can do — the shared library's b
 build, the API surface check and the release are manual, against your own install. That is one command:
 
 ```powershell
-.\build.ps1 -NoCopy -Test
+.\build.ps1
 ```
 
 If you ever do register a runner and want the compile automated, it is a small job: `runs-on:
-self-hosted`, the same steps as `build.ps1 -NoCopy -Test`, and `fetch-depth: 0` so the tag is present
+self-hosted`, the same steps as `build.ps1` and `tools\test-getmods.ps1`, and `fetch-depth: 0` so the tag is present
 for the version stamping. Set `SWYG_GAME_DIR` on the runner so it does not depend on where Steam put
 things. Keep the `if:` excluding `pull_request` — a fork's pull request would otherwise run code from
 the fork on your machine.

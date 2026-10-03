@@ -1,137 +1,73 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Text;
 using System.Threading;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
 
-namespace ScamWYF.Launcher
+namespace ScamWYF.Launcher.Views
 {
+    /// <summary>
+    /// One catalogue row. <see cref="Release"/> is what the install path uses; the rest is for display.
+    /// </summary>
+    /// <remarks>
+    /// Observable because the installed column is re-read from disk after every install and after any
+    /// change on the Mods tab. The old version mutated the sub-item text in place, which worked but left
+    /// no way to tell the list that it had changed.
+    /// </remarks>
+    internal sealed class ReleaseRow : INotifyPropertyChanged
+    {
+        private string _installed;
+
+        public ReleaseRow(ReleaseInfo release, string installed)
+        {
+            Release = release;
+            _installed = installed;
+        }
+
+        public ReleaseInfo Release { get; private set; }
+        public string Name { get { return Release.Source.DisplayName; } }
+        public string Tag { get { return Release.TagName; } }
+        public string Size { get { return Http.Describe(Release.Package.Size); } }
+        public string What { get { return Release.Source.Summary; } }
+
+        public string Installed
+        {
+            get { return _installed; }
+            set
+            {
+                if (_installed == value) return;
+                _installed = value;
+                var handler = PropertyChanged;
+                if (handler != null) handler(this, new PropertyChangedEventArgs("Installed"));
+            }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+    }
+
     /// <summary>
     /// The Get mods tab: fetch a release from GitHub, or install a dll from a URL.
     /// </summary>
     /// <remarks>
-    /// Separate from the Mods tab on purpose. That one is bookkeeping over files already on disk and
-    /// never touches the network; this one downloads code that will be executed by the game. Keeping them
-    /// apart means the Mods tab's promise - it moves and deletes files, nothing more - stays true, and
-    /// the consequences of installing are somewhere you only arrive deliberately.
-    ///
     /// Nothing is installed without a confirmation that names the files, the version read out of each
     /// file, the folder each is going into, and anything it would replace. The version in the URL is not
     /// shown as the version, because the version inside the file is the one that will actually load.
     /// </remarks>
-    internal sealed class GetModsTab : UserControl
+    public partial class GetModsView : UserControl
     {
-        private readonly App _app;
+        public MainWindow Host { get; set; }
 
-        private readonly ThemedListView _list = new ThemedListView();
-        private readonly Label _summary = new Label();
-        private readonly FlatButton _check = new FlatButton();
-        private readonly FlatButton _install = new FlatButton();
-        private readonly TextBox _url = new TextBox();
-        private readonly FlatButton _fromUrl = new FlatButton();
-
-        private readonly List<ReleaseInfo> _releases = new List<ReleaseInfo>();
-
-        private Thread _worker;
+        private readonly ObservableCollection<ReleaseRow> _rows = new ObservableCollection<ReleaseRow>();
         private volatile bool _busy;
 
-        public GetModsTab(App app)
+        public GetModsView()
         {
-            _app = app;
-            Build();
-        }
-
-        private void Build()
-        {
-            Dock = DockStyle.Fill;
-            Padding = Theme.PagePadding;
-            BackColor = Theme.Window;
-
-            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-            _summary.AutoSize = true;
-            _summary.Font = Theme.Strong;
-            _summary.ForeColor = Theme.Text;
-            _summary.Margin = new Padding(0, 0, 0, Theme.Gap);
-            root.Controls.Add(_summary, 0, 0);
-
-            _list.Dock = DockStyle.Fill;
-            _list.Columns.Add("Mod", 150);
-            _list.Columns.Add("Release", 90);
-            _list.Columns.Add("Size", 90);
-            _list.Columns.Add("Installed", 110);
-            _list.Columns.Add("What it does", 460);
-            _list.SelectedIndexChanged += delegate { UpdateButtons(); };
-            root.Controls.Add(_list, 0, 1);
-
-            var buttons = Theme.ButtonRow();
-
-            _check.Text = "Check for updates";
-            _check.Click += delegate { CheckForUpdates(); };
-            buttons.Controls.Add(_check);
-
-            _install.Text = "Install\u2026";
-            _install.Accent = true;
-            _install.Spaced();
-            _install.Click += delegate { InstallSelected(); };
-            buttons.Controls.Add(_install);
-
-            root.Controls.Add(buttons, 0, 2);
-
-            var fromUrl = Theme.ButtonRow();
-            fromUrl.Margin = new Padding(0, Theme.Gap * 2, 0, 0);
-
-            var urlLabel = new Label
-            {
-                Text = "Install a dll from a URL",
-                AutoSize = true,
-                ForeColor = Theme.Muted,
-                Font = Theme.Small,
-                Margin = new Padding(0, 8, Theme.Gap, 0)
-            };
-            fromUrl.Controls.Add(urlLabel);
-
-            _url.Width = 420;
-            _url.Height = Theme.ControlHeight - 6;
-            _url.BackColor = Theme.Field;
-            _url.ForeColor = Theme.Text;
-            _url.BorderStyle = BorderStyle.FixedSingle;
-            _url.Font = Theme.Body;
-            _url.Margin = new Padding(0, 3, Theme.Gap, 0);
-            fromUrl.Controls.Add(_url);
-
-            _fromUrl.Text = "Download and install\u2026";
-            _fromUrl.Click += delegate { InstallFromUrl(); };
-            fromUrl.Controls.Add(_fromUrl);
-
-            root.Controls.Add(fromUrl, 0, 3);
-
-            var warning = new Label
-            {
-                AutoSize = true,
-                MaximumSize = new Size(900, 0),
-                ForeColor = Theme.Warn,
-                Font = Theme.Small,
-                Margin = new Padding(0, Theme.Gap, 0, 0),
-                Text =
-                    "Installing a mod puts code in your game folder that BepInEx will load and run on the " +
-                    "next launch. Only install what you trust.\n\n" +
-                    "Mods are downloaded over https and checked against the SHA-256 GitHub publishes for " +
-                    "them. That catches a corrupted download; it is not a signature, and it cannot tell you " +
-                    "whether a mod is safe to run.\n\n" +
-                    "Changes take effect on the next launch."
-            };
-            root.Controls.Add(warning, 0, 4);
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-            Controls.Add(root);
-            UpdateButtons();
+            InitializeComponent();
+            List.ItemsSource = _rows;
         }
 
         /// <summary>
@@ -148,59 +84,57 @@ namespace ScamWYF.Launcher
         /// </remarks>
         public void RefreshInstalled()
         {
-            for (var i = 0; i < _list.Items.Count; i++)
+            foreach (var row in _rows)
             {
-                var release = _list.Items[i].Tag as ReleaseInfo;
-                if (release == null) continue;
-
-                _list.Items[i].SubItems[3].Text = DescribeInstalled(release.Source);
+                row.Installed = DescribeInstalled(row.Release.Source);
             }
         }
 
-        /// <summary>Ask GitHub what the latest release of each known mod is.</summary>
         public void Reload()
         {
-            _summary.Text = "Not checked yet.";
-            _releases.Clear();
-            _list.Items.Clear();
+            Summary.Text = "Not checked yet.";
+            _rows.Clear();
             UpdateButtons();
         }
 
         public void OnTabShown()
         {
-            if (_releases.Count == 0 && !_busy) CheckForUpdates();
+            if (_rows.Count == 0 && !_busy) CheckForUpdates();
         }
 
         private void UpdateButtons()
         {
-            var ready = !_busy && Selected != null;
-
-            _check.Enabled = !_busy;
-            _install.Enabled = ready;
-            _fromUrl.Enabled = !_busy;
-            _url.Enabled = !_busy;
+            CheckButton.IsEnabled = !_busy;
+            InstallButton.IsEnabled = !_busy && List.SelectedItem is ReleaseRow;
+            FromUrlButton.IsEnabled = !_busy;
+            UrlBox.IsEnabled = !_busy;
         }
 
-        private ReleaseInfo Selected
+        private ReleaseRow Selected
         {
-            get
-            {
-                if (_list.SelectedItems.Count == 0) return null;
-                return _list.SelectedItems[0].Tag as ReleaseInfo;
-            }
+            get { return List.SelectedItem as ReleaseRow; }
         }
+
+        private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateButtons();
+        }
+
+        private void OnCheck(object sender, RoutedEventArgs e) { CheckForUpdates(); }
+        private void OnInstall(object sender, RoutedEventArgs e) { InstallSelected(); }
+        private void OnFromUrl(object sender, RoutedEventArgs e) { InstallFromUrl(); }
 
         private void CheckForUpdates()
         {
-            if (!_app.Install.CanManageMods)
+            if (!Host.Install.CanManageMods)
             {
-                _summary.Text = "No BepInEx install found, so there is nowhere to put a mod. Run the Setup tab first.";
+                Summary.Text = "No BepInEx install found, so there is nowhere to put a mod. Run the Setup tab first.";
                 return;
             }
 
             SetBusy(true, "Checking GitHub for the latest releases...");
 
-            Run(() =>
+            Run(delegate
             {
                 var found = new List<ReleaseInfo>();
                 var problems = new List<string>();
@@ -218,37 +152,27 @@ namespace ScamWYF.Launcher
                     }
                 }
 
-                OnUi(() =>
+                OnUi(delegate
                 {
-                    _releases.Clear();
-                    _releases.AddRange(found);
-                    _list.BeginUpdate();
-                    _list.Items.Clear();
+                    _rows.Clear();
 
-                    foreach (var release in _releases)
+                    foreach (var release in found)
                     {
-                        var item = new ListViewItem(release.Source.DisplayName);
-                        item.SubItems.Add(release.TagName);
-                        item.SubItems.Add(Http.Describe(release.Package.Size));
-                        item.SubItems.Add(DescribeInstalled(release.Source));
-                        item.SubItems.Add(release.Source.Summary);
-                        item.Tag = release;
-                        _list.Items.Add(item);
+                        _rows.Add(new ReleaseRow(release, DescribeInstalled(release.Source)));
                     }
 
-                    _list.EndUpdate();
-
-                    _summary.Text = problems.Count == 0
-                        ? _releases.Count + " mod(s) checked against GitHub."
-                        : _releases.Count + " checked, " + problems.Count + " could not be read. " +
+                    var report = problems.Count == 0
+                        ? _rows.Count + " mod(s) checked against GitHub."
+                        : _rows.Count + " checked, " + problems.Count + " could not be read. " +
                           string.Join("  ", problems.ToArray());
 
-                    Theme.FitHeadline(_summary, _list.ClientSize.Width);
-                    _list.Refit();
+                    // Passed to SetBusy rather than assigned separately, so the status line is told what
+                    // actually happened. It used to keep saying "Checking GitHub..." after the answer had
+                    // arrived, which is the sort of thing that makes a person press the button again.
+                    SetBusy(false, report);
 
-                    if (_list.Items.Count > 0) _list.Items[0].Selected = true;
+                    if (_rows.Count > 0) List.SelectedIndex = 0;
 
-                    SetBusy(false, null);
                     UpdateButtons();
                 });
             });
@@ -260,7 +184,7 @@ namespace ScamWYF.Launcher
             var present = 0;
             foreach (var file in source.Files)
             {
-                if (File.Exists(Path.Combine(ModCatalogue.FolderFor(_app.Install, file.Folder), file.FileName)))
+                if (File.Exists(Path.Combine(ModCatalogue.FolderFor(Host.Install, file.Folder), file.FileName)))
                 {
                     present++;
                 }
@@ -272,22 +196,24 @@ namespace ScamWYF.Launcher
 
         private void InstallSelected()
         {
-            var release = Selected;
-            if (release == null) return;
+            var row = Selected;
+            if (row == null) return;
 
-            if (ModManager.GameRunning(out var running))
+            var release = row.Release;
+
+            string running;
+            if (ModManager.GameRunning(out running))
             {
-                MessageBox.Show(this,
+                Dialogs.Inform("Close the game first",
                     "The game is running (" + running + ").\n\nBepInEx keeps plugin files locked until it " +
-                    "exits, so close the game first.",
-                    "Close the game first", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    "exits, so close the game first.");
                 return;
             }
 
             var token = NewToken();
             SetBusy(true, "Preparing " + release.Source.DisplayName + "...");
 
-            Run(() =>
+            Run(delegate
             {
                 string folder = null;
                 try
@@ -295,9 +221,9 @@ namespace ScamWYF.Launcher
                     var fetched = ModInstaller.Fetch(release.Package, token, note => Status(note));
                     folder = fetched.WorkingFolder;
 
-                    var plan = ModInstaller.Plan(release, fetched.UnpackedFolder, _app.Install);
+                    var plan = ModInstaller.Plan(release, fetched.UnpackedFolder, Host.Install);
 
-                    OnUi(() =>
+                    OnUi(delegate
                     {
                         SetBusy(false, null);
                         ConfirmAndApply(plan, release.Source.DisplayName, folder);
@@ -307,7 +233,7 @@ namespace ScamWYF.Launcher
                 {
                     var message = ex.Message;
                     var work = folder;
-                    OnUi(() =>
+                    OnUi(delegate
                     {
                         SetBusy(false, null);
                         if (work != null) ModInstaller.Discard(work);
@@ -334,11 +260,7 @@ namespace ScamWYF.Launcher
                 text += Environment.NewLine + warning + Environment.NewLine;
             }
 
-            var answer = MessageBox.Show(this, text,
-                "Install " + title + "?",
-                MessageBoxButtons.OKCancel, MessageBoxIcon.Information, MessageBoxDefaultButton.Button2);
-
-            if (answer != DialogResult.OK)
+            if (!Dialogs.Confirm("Install " + title + "?", text, "Install"))
             {
                 ModInstaller.Discard(folder);
                 Status("cancelled - nothing was installed");
@@ -353,14 +275,13 @@ namespace ScamWYF.Launcher
                     if (step.IsReplacement) replaced.Add(step.File.FileName + " (" + step.ReplacingVersion + ")");
                 }
 
-                var second = MessageBox.Show(this,
+                var second = Dialogs.Confirm("Replace existing files?",
                     "This replaces " + string.Join(", ", replaced.ToArray()) + "." + Environment.NewLine +
                     Environment.NewLine +
                     "There is no undo and no backup. A replaced file cannot be recovered from here.",
-                    "Replace existing files?",
-                    MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+                    "Replace", DialogSeverity.Warning);
 
-                if (second != DialogResult.OK)
+                if (!second)
                 {
                     ModInstaller.Discard(folder);
                     Status("cancelled - nothing was installed");
@@ -382,12 +303,12 @@ namespace ScamWYF.Launcher
                 ModInstaller.Discard(folder);
             }
 
-            _app.RefreshModViews();
+            Host.RefreshModViews();
         }
 
         private void InstallFromUrl()
         {
-            var url = (_url.Text ?? "").Trim();
+            var url = (UrlBox.Text ?? "").Trim();
 
             if (!Http.IsAcceptable(url))
             {
@@ -395,13 +316,14 @@ namespace ScamWYF.Launcher
                 return;
             }
 
-            if (!_app.Install.CanManageMods)
+            if (!Host.Install.CanManageMods)
             {
                 Failed("No BepInEx install found, so there is nowhere to put a mod. Run the Setup tab first.");
                 return;
             }
 
-            if (ModManager.GameRunning(out var running))
+            string running;
+            if (ModManager.GameRunning(out running))
             {
                 Failed("The game is running (" + running + "). Close it first - BepInEx keeps plugin files " +
                        "locked until it exits.");
@@ -422,7 +344,7 @@ namespace ScamWYF.Launcher
             var token = NewToken();
             SetBusy(true, "Downloading...");
 
-            Run(() =>
+            Run(delegate
             {
                 string folder = null;
                 try
@@ -436,8 +358,6 @@ namespace ScamWYF.Launcher
 
                     var isZip = fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
 
-                    var files = isZip ? new[] { new ModFile(fileName, ModFolder.Plugins, true) } : null;
-
                     var steps = isZip ? FromZip(fetched.UnpackedFolder) : Single(fetched.UnpackedFolder, fileName);
                     if (steps.Count == 0) throw new IOException("nothing installable was found in the download");
 
@@ -447,7 +367,7 @@ namespace ScamWYF.Launcher
                     plan.Release = new ReleaseInfo(source, "(no version)", null,
                         new ReleaseAsset(fileName, 0, url, fetched.Sha256));
 
-                    OnUi(() =>
+                    OnUi(delegate
                     {
                         SetBusy(false, null);
                         ConfirmUrl(plan, folder, HostOf(url), steps[0].Guid == null);
@@ -457,7 +377,7 @@ namespace ScamWYF.Launcher
                 {
                     var message = ex.Message;
                     var work = folder;
-                    OnUi(() =>
+                    OnUi(delegate
                     {
                         SetBusy(false, null);
                         if (work != null) ModInstaller.Discard(work);
@@ -481,7 +401,7 @@ namespace ScamWYF.Launcher
             {
                 File = new ModFile(fileName, ModFolder.Plugins, true),
                 SourcePath = path,
-                DestinationPath = Path.Combine(_app.Install.PluginsFolder, fileName),
+                DestinationPath = Path.Combine(Host.Install.PluginsFolder, fileName),
                 Version = entry.DisplayVersion,
                 PluginName = entry.DisplayName,
                 Guid = entry.Guid,
@@ -508,7 +428,7 @@ namespace ScamWYF.Launcher
                     File = new ModFile(name, wantsPlugin ? ModFolder.Plugins : ModFolder.Core, wantsPlugin),
                     SourcePath = file,
                     DestinationPath = Path.Combine(
-                        ModCatalogue.FolderFor(_app.Install, wantsPlugin ? ModFolder.Plugins : ModFolder.Core), name),
+                        ModCatalogue.FolderFor(Host.Install, wantsPlugin ? ModFolder.Plugins : ModFolder.Core), name),
                     Version = entry.DisplayVersion,
                     PluginName = entry.DisplayName,
                     Guid = entry.Guid,
@@ -521,7 +441,9 @@ namespace ScamWYF.Launcher
 
         private string ExistingVersion(string fileName)
         {
-            foreach (var folder in new[] { _app.Install.PluginsFolder, _app.Install.BepInExCore })
+            var folders = new[] { Host.Install.PluginsFolder, Host.Install.BepInExCore };
+
+            foreach (var folder in folders)
             {
                 var path = Path.Combine(folder, fileName);
                 if (!File.Exists(path)) continue;
@@ -577,11 +499,7 @@ namespace ScamWYF.Launcher
                 text.AppendLine("mod. It is a library - harmless, and it will do nothing on its own.");
             }
 
-            var answer = MessageBox.Show(this, text.ToString(),
-                "Install from " + host + "?",
-                MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
-
-            if (answer != DialogResult.OK)
+            if (!Dialogs.Confirm("Install from " + host + "?", text.ToString(), "Install", DialogSeverity.Warning))
             {
                 ModInstaller.Discard(folder);
                 Status("cancelled - nothing was installed");
@@ -602,7 +520,7 @@ namespace ScamWYF.Launcher
                 ModInstaller.Discard(folder);
             }
 
-            _app.RefreshModViews();
+            Host.RefreshModViews();
         }
 
         private static string GuessFileName(string url)
@@ -642,7 +560,7 @@ namespace ScamWYF.Launcher
         /// </remarks>
         private void Run(Action work)
         {
-            _worker = new Thread(delegate ()
+            new Thread(delegate ()
             {
                 try
                 {
@@ -650,7 +568,7 @@ namespace ScamWYF.Launcher
                 }
                 catch (Exception ex)
                 {
-                    OnUi(() =>
+                    OnUi(delegate
                     {
                         SetBusy(false, null);
                         Failed(ex.Message);
@@ -659,57 +577,53 @@ namespace ScamWYF.Launcher
             })
             {
                 IsBackground = true
-            };
-
-            _worker.Start();
+            }.Start();
         }
 
         private void OnUi(Action action)
         {
-            if (IsDisposed) return;
-
-            if (InvokeRequired)
+            if (Dispatcher.CheckAccess())
             {
-                try
-                {
-                    BeginInvoke(action);
-                }
-                catch (Exception)
-                {
-                    // The window closed while a download was in flight. There is nobody left to tell.
-                }
+                action();
                 return;
             }
 
-            action();
+            try
+            {
+                Dispatcher.BeginInvoke(action);
+            }
+            catch (Exception)
+            {
+                // The window closed while a download was in flight. There is nobody left to tell.
+            }
         }
 
         private void SetBusy(bool busy, string message)
         {
             _busy = busy;
 
-            if (message != null) _summary.Text = message;
-            if (message != null) _app.Status(message, true);
+            if (message != null) Summary.Text = message;
+            if (message != null) Host.Status(message, true);
 
             UpdateButtons();
-            _app.SetBusy(busy);
-            _app.Pump();
+            Host.SetBusy(busy);
+            Host.Pump();
         }
 
         private void Status(string message)
         {
-            OnUi(() =>
+            OnUi(delegate
             {
-                _summary.Text = message;
-                _app.Status(message, true);
+                Summary.Text = message;
+                Host.Status(message, true);
             });
         }
 
         private void Failed(string message)
         {
-            _summary.Text = message;
-            _app.Status(message, false);
-            MessageBox.Show(this, message, "Could not install", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            Summary.Text = message;
+            Host.Status(message, false);
+            Dialogs.Error("Could not install", message);
         }
     }
 }

@@ -1,0 +1,88 @@
+<UserControl x:Class="ScamWYF.Launcher.Views.ModsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent"
+             Padding="16">
+
+    <!--
+        The mods tab: what is installed, and the three things anyone wants to do to it.
+
+        Enable, disable, delete. BepInEx has no enable/disable of its own, so this moves files between
+        plugins\ and plugins_disabled\ - the same thing a person would do by hand, which means it is
+        unsurprising when it does not work.
+    -->
+    <Grid Grid.IsSharedSizeScope="True">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="Summary" Grid.Row="0" Style="{StaticResource StrongText}" />
+
+        <Grid Grid.Row="1" Margin="0,0,0,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="230" SharedSizeGroup="Mod" />
+                    <ColumnDefinition Width="150" SharedSizeGroup="Version" />
+                    <ColumnDefinition Width="90" SharedSizeGroup="State" />
+                    <ColumnDefinition Width="230" SharedSizeGroup="Guid" />
+                    <ColumnDefinition Width="*" SharedSizeGroup="Note" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Mod" Style="{StaticResource ColumnHeaderText}" />
+                <TextBlock Grid.Column="1" Text="Version" Style="{StaticResource ColumnHeaderText}" />
+                <TextBlock Grid.Column="2" Text="State" Style="{StaticResource ColumnHeaderText}" />
+                <TextBlock Grid.Column="3" Text="GUID" Style="{StaticResource ColumnHeaderText}" />
+                <TextBlock Grid.Column="4" Text="Note" Style="{StaticResource ColumnHeaderText}" />
+            </Grid>
+
+            <Border Grid.Row="0" Style="{StaticResource ColumnHeaderRule}" VerticalAlignment="Bottom" />
+
+            <ListView x:Name="List" Grid.Row="1"
+                      SelectionChanged="OnSelectionChanged"
+                      MouseDoubleClick="OnDoubleClick">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                        <Setter Property="Foreground" Value="{Binding Brush}" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Height="26">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="230" SharedSizeGroup="Mod" />
+                                <ColumnDefinition Width="150" SharedSizeGroup="Version" />
+                                <ColumnDefinition Width="90" SharedSizeGroup="State" />
+                                <ColumnDefinition Width="230" SharedSizeGroup="Guid" />
+                                <ColumnDefinition Width="*" SharedSizeGroup="Note" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" Style="{StaticResource CellText}" />
+                            <TextBlock Grid.Column="1" Text="{Binding Version}" Style="{StaticResource CellText}" />
+                            <TextBlock Grid.Column="2" Text="{Binding State}" Style="{StaticResource CellText}" />
+                            <TextBlock Grid.Column="3" Text="{Binding Guid}" Style="{StaticResource CellText}" />
+                            <TextBlock Grid.Column="4" Text="{Binding Note}" Style="{StaticResource CellText}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
+            <Button x:Name="EnableButton" Content="Enable" Style="{StaticResource FlatButton}" Click="OnToggle" />
+            <Button x:Name="DisableButton" Content="Disable" Margin="8,0,0,0" Style="{StaticResource FlatButton}" Click="OnToggle" />
+            <Button x:Name="DeleteButton" Content="Delete…" Margin="8,0,0,0" Style="{StaticResource FlatButton}" Click="OnDelete" />
+            <Button Content="Rescan" Margin="8,0,0,0" Style="{StaticResource FlatButton}" Click="OnRescan" />
+            <Button Content="Open plugins folder" Margin="8,0,0,0" Style="{StaticResource FlatButton}" Click="OnOpenPlugins" />
+            <Button Content="Open disabled folder" Margin="8,0,0,0" Style="{StaticResource FlatButton}" Click="OnOpenDisabled" />
+        </StackPanel>
+
+        <TextBlock Grid.Row="3" Style="{StaticResource NoteText}"
+                   Text="Enable and disable move the file between plugins and plugins_disabled, which is what BepInEx watches. Changes take effect on the next launch." />
+    </Grid>
+</UserControl>

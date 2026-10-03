@@ -1,88 +1,62 @@
 using System;
-using System.Collections;
 using System.Diagnostics;
-using System.Drawing;
 using System.IO;
 using System.Reflection;
 using System.Threading;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace ScamWYF.Launcher
 {
     /// <summary>
-    /// The main window. Three tabs, and not much else.
+    /// The main window: the four tabs, a status line, and the Play button.
     /// </summary>
     /// <remarks>
-    /// Setup, Mods, Log. A launcher earns its place by making three things easy: fix a broken
-    /// install, see what is installed, and read what the game said. Anything else belongs in a mod.
+    /// Setup, Mods, Get mods, Log. Everything here exists to answer a question the player has.
     ///
     /// The game is launched from here rather than from Steam deliberately. Launching the exe directly
     /// skips Steam's own wrapper, and this game has not been observed to care - but starting from a
     /// launcher that a player did not install through Steam is also how you get two copies of the
     /// game running at once. So: if Steam can find and start it, do that; otherwise say so plainly
     /// and offer the exe.
+    ///
+    /// This type also acts as the host that the four views talk to. That is the same shape the WinForms
+    /// version had, and it is kept deliberately: the views need a status line, a busy flag and a way to
+    /// re-read both mod tabs, and threading an interface through four constructors to provide three
+    /// members would be ceremony without benefit.
     /// </remarks>
-    internal sealed class App : Form
+    public partial class MainWindow : Window
     {
-        // Assigned in Build() rather than at the field, because the constructor calls Build and the tabs
-        // need this instance to exist first. Non-readonly for exactly that reason.
-        private SetupTab _setup;
-        private ModsTab _mods;
-        private GetModsTab _getMods;
-        private LogTab _log;
+        internal GameInstall Install { get; private set; }
+        internal ModManager Mods { get; private set; }
+        internal SetupRunner Setup { get; private set; }
 
-        /// <summary>
-        /// The tab strip, which is also the page container.
-        /// </summary>
-        /// <remarks>
-        /// One control, not a themed strip wrapped around a hidden stock one. Two TabControls sharing
-        /// TabPages is fragile - moving a page between them leaves the second one's collection empty and
-        /// it silently draws no tabs at all, which is exactly what happened the first time.
-        /// </remarks>
-        private readonly TabStrip _strip = new TabStrip();
+        /// <summary>Whether something long-running is going, which the views use to grey things out.</summary>
+        public bool Busy { get; private set; }
 
-        private readonly ToolStripStatusLabel _status = new ToolStripStatusLabel();
+        private bool _shown;
 
-        private bool _busy;
-
-        public GameInstall Install { get; private set; }
-        public ModManager Mods { get; private set; }
-        public SetupRunner Setup { get; private set; }
-
-        /// <summary>Whether something long-running is going, which the UI uses to grey things out.</summary>
-        public bool Busy { get { return _busy; } }
-
-        [STAThread]
-        private static void Main(string[] args)
+        public MainWindow(string[] args)
         {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new App(args));
-        }
+            InitializeComponent();
 
-        private App(string[] args)
-        {
             var explicitPath = args != null && args.Length > 0 ? args[0] : null;
 
             Install = GameInstall.Resolve(explicitPath);
             Mods = new ModManager(Install.BepInExCore);
             Setup = new SetupRunner(FindSetupScript());
 
-            Theme.Apply(this);
-            Text = "Scam With Your Friends - modding " + BuildVersion();
-            MinimumSize = new Size(940, 620);
-            Size = new Size(1060, 720);
-            StartPosition = FormStartPosition.CenterScreen;
+            Title = "Scam With Your Friends - modding " + BuildVersion();
 
-            Build();
+            SetupPage.Host = this;
+            ModsPage.Host = this;
+            GetModsPage.Host = this;
+            LogPage.Host = this;
 
-            if (!Install.Exists)
-            {
-                Status("No game install found. Set SWYG_GAME_DIR, or pass a path as the first argument.", false);
-            }
-
-            _setup.Reload();
-            _mods.Reload();
+            Loaded += OnLoaded;
         }
 
         /// <summary>
@@ -113,14 +87,14 @@ namespace ScamWYF.Launcher
         /// This build's version, for the title bar.
         /// </summary>
         /// <remarks>
-        /// The informational version, not the assembly version, because build.ps1 fills the former from
+        /// The informational version, not the assembly version, because the build fills the former from
         /// the git tag and it carries the commit - "which launcher are you on" is a support question
         /// and the commit is the answer. Falls back to the assembly version, which is all a build with
         /// no tag behind it has.
         /// </remarks>
         private static string BuildVersion()
         {
-            var assembly = typeof(App).Assembly;
+            var assembly = typeof(MainWindow).Assembly;
 
             var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
             if (informational != null && !string.IsNullOrEmpty(informational.InformationalVersion))
@@ -132,37 +106,19 @@ namespace ScamWYF.Launcher
             return version != null ? version.ToString() : "unknown version";
         }
 
-        private void Build()
+        private void OnLoaded(object sender, RoutedEventArgs e)
         {
-            _setup = new SetupTab(this);
-            _mods = new ModsTab(this);
-            _getMods = new GetModsTab(this);
-            _log = new LogTab(this);
+            // Past this point the window has been measured once, so a tab switch has to be deferred rather
+            // than laid out in the click handler.
+            _shown = true;
 
-            _strip.Dock = DockStyle.Fill;
-            _strip.TabPages.Add(Page("Setup", _setup));
-            _strip.TabPages.Add(Page("Mods", _mods));
-            _strip.TabPages.Add(Page("Get mods", _getMods));
-            _strip.TabPages.Add(Page("Log", _log));
-            _strip.SelectedIndexChanged += delegate { OnStripChanged(); };
-            Controls.Add(_strip);
-
-            var strip = new ToolStrip
+            if (!Install.Exists)
             {
-                Dock = DockStyle.Bottom,
-                BackColor = Theme.Surface,
-                ForeColor = Theme.Text,
-                RenderMode = ToolStripRenderMode.System,
-                Padding = new Padding(Theme.Gap, 2, Theme.Gap, 2)
-            };
-            _status.Spring = true;
-            _status.TextAlign = ContentAlignment.MiddleLeft;
-            _status.ForeColor = Theme.Muted;
-            _status.Font = Theme.Small;
-            strip.Items.Add(_status);
-            strip.Items.Add(new ToolStripStatusLabel(" "));
-            strip.Items.Add(LaunchButton());
-            Controls.Add(strip);
+                Status("No game install found. Set SWYG_GAME_DIR, or pass a path as the first argument.", false);
+            }
+
+            SetupPage.Reload();
+            ModsPage.Reload();
         }
 
         /// <summary>
@@ -172,52 +128,29 @@ namespace ScamWYF.Launcher
         /// On arrival rather than on a timer: the only thing that changes under the app's feet is the
         /// install, and that changes when the user runs setup or the game updates.
         /// </remarks>
-        private void OnStripChanged()
+private void OnTabChanged(object sender, SelectionChangedEventArgs e)
         {
-            var index = _strip.SelectedIndex;
+            // Two reasons to do nothing here. SelectionChanged fires once while the XAML is being
+            // constructed - before the views have been given a Host - and again before the window has
+            // been laid out, when a tab measures itself against a width it is about to lose. The first
+            // load is done by OnLoaded instead, once everything is wired.
+            if (!_shown) return;
 
-            // Deferred until after layout. A tab that was not selected at startup is only given its
-            // final size when it is first shown, so a tab that measures itself in the same turn as the
-            // click measures the width it had before - and sizes its columns to that, which left the Log
-            // tab's problems list with a horizontal scrollbar it did not need.
-            if (!IsHandleCreated)
-            {
-                ShowTab(index);
-                return;
-            }
-
-            BeginInvoke(new Action(delegate { ShowTab(index); }));
+            // Deferred to the dispatcher, for the sizing reason above. It is still the right thing to do in
+            // WPF, which lays out lazily for the same reason WinForms did.
+            var index = Tabs.SelectedIndex;
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(delegate { ShowTab(index); }));
         }
 
         private void ShowTab(int index)
         {
             switch (index)
             {
-                case 0: _setup.Reload(); break;
-                case 1: _mods.Reload(); break;
-                case 2: _getMods.OnTabShown(); break;
-                case 3: _log.Reload(); break;
+                case 0: SetupPage.Reload(); break;
+                case 1: ModsPage.Reload(); break;
+                case 2: GetModsPage.OnTabShown(); break;
+                case 3: LogPage.Reload(); break;
             }
-        }
-
-        private static TabPage Page(string title, Control content)
-        {
-            var page = new TabPage(title) { BackColor = Theme.Window };
-            page.Controls.Add(content);
-            return page;
-        }
-
-        private ToolStripButton LaunchButton()
-        {
-            var button = new ToolStripButton("Play") { DisplayStyle = ToolStripItemDisplayStyle.Text };
-            button.Click += delegate { LaunchGame(); };
-            return button;
-        }
-
-        /// <summary>First paint: settle the selection so the first tab does what it says on arrival.</summary>
-        private void OnTabShown()
-        {
-            OnStripChanged();
         }
 
         /// <summary>
@@ -228,13 +161,11 @@ namespace ScamWYF.Launcher
         /// I install" - so a change made in one has to show up in the other. Deleting a mod on the Mods
         /// tab leaves the Get mods row claiming it is installed, and installing one left that row
         /// unchanged too, which is the kind of thing that makes a person distrust the whole window.
-        ///
-        /// No recursion: RefreshInstalled only touches this tab's own rows.
         /// </remarks>
         public void RefreshModViews()
         {
-            _mods.Reload();
-            _getMods.RefreshInstalled();
+            ModsPage.Reload();
+            GetModsPage.RefreshInstalled();
         }
 
         public void RunSetup(bool offline, Action<string> onLine, Action<int> onFinished)
@@ -270,39 +201,51 @@ namespace ScamWYF.Launcher
 
         public void SetBusy(bool busy)
         {
-            _busy = busy;
-            _setup.Enabled = !busy;
-            _strip.Enabled = !busy;
-            UseWaitCursor = busy;
+            Busy = busy;
+
+            // The whole window, not just the views. A download or a script run is the one moment where
+            // starting a second one would produce two threads writing the same install.
+            SetupPage.IsEnabled = !busy;
+            ModsPage.IsEnabled = !busy;
+            GetModsPage.IsEnabled = !busy;
+            LogPage.IsEnabled = !busy;
+            Tabs.IsEnabled = !busy;
+            Mouse.OverrideCursor = busy ? Cursors.Wait : null;
         }
 
         public void Status(string message, bool good)
         {
-            if (InvokeRequired)
+            if (!Dispatcher.CheckAccess())
             {
-                BeginInvoke(new Action<string, bool>(Status), message, good);
+                Dispatcher.BeginInvoke(new Action<string, bool>(Status), message, good);
                 return;
             }
 
-            _status.Text = message ?? "";
-            _status.ForeColor = good ? Theme.Good : Theme.Bad;
+            StatusText.Text = message ?? "";
+            StatusText.Foreground = (Brush)Application.Current.FindResource(good ? "GoodBrush" : "BadBrush");
         }
 
         /// <summary>Let the UI catch up while a long operation is going.</summary>
         public void Pump()
         {
-            Application.DoEvents();
+            // Background priority: run everything already queued, including layout and render, then return.
+            // Background is what makes this a "catch up now" rather than a nested message loop - a nested
+            // loop would let the user start a second operation, which is the thing being guarded against.
+            Dispatcher.Invoke(DispatcherPriority.Background, new Action(delegate { }));
         }
 
-        private void LaunchGame()
+        private void OnPlay(object sender, RoutedEventArgs e)
         {
+            if (Busy) return;
+
             if (!Install.HasGame)
             {
                 Status("No game install found at " + Install.Path, false);
                 return;
             }
 
-            if (ModManager.GameRunning(out var running))
+            string running;
+            if (ModManager.GameRunning(out running))
             {
                 Status(running + " is already running.", false);
                 return;

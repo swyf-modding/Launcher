@@ -2,9 +2,9 @@ name: ci
 
 # Builds and tests the launcher.
 #
-# Unlike the mods, this repo does not need the game: it compiles against the .NET Framework reference
-# assemblies and stages its own Mono.Cecil, so a hosted runner has everything it needs. That is the
-# reason the launcher is a separate repo with its own build rather than a mode of a mod.
+# Unlike the mods, this repo does not need the game: it targets .NET Framework 4.8, which every Windows
+# runner already has, and stages its own Mono.Cecil, so a hosted runner has everything it needs. That is
+# the reason the launcher is a separate repo with its own build rather than a mode of a mod.
 
 on:
   push:
@@ -25,11 +25,11 @@ jobs:
         with:
           dotnet-version: '10.x'
 
-      # The launcher references .NET Framework 4.8, so it needs the targeting pack. setup-dotnet does
-      # not install it; windows-latest ships it with the Visual Studio image.
+      # The launcher targets .NET Framework 4.8, so it needs that targeting pack. setup-dotnet does not
+      # install it; windows-latest ships it with the Visual Studio image.
       #
-      # The check resolves the pack the same way build.ps1 does rather than demanding v4.8 exactly, so
-      # the two cannot disagree: a stricter check here fails a build that would have succeeded, and
+      # Resolved by highest-version-present rather than demanding v4.8 exactly, so this check cannot
+      # disagree with the build: a stricter check here fails a build that would have succeeded and
       # reports it as a missing toolchain when the real problem is this file.
       - name: Confirm the reference assemblies are present
         shell: pwsh
@@ -55,11 +55,16 @@ jobs:
 
       - name: Build
         shell: pwsh
-        run: .\build.ps1 -NoCopy
+        run: .\build.ps1
 
       # Compiling is not a check. The exe is a GUI program, so the useful verification is that it
       # starts, resolves Mono.Cecil from beside itself, and finds the game - which is also the one
       # thing that differs between a developer's machine and a fresh clone.
+      #
+      # Worth more now than it was. WPF resolves styles, templates and pack URIs at load time from
+      # compiled XAML, so a mistake in a XAML file is not a compile error - the build stays green and the
+      # window fails to appear when it opens. Surviving startup is what catches that class of fault, which
+      # is why it is a step here rather than a thing left to a person to notice.
       - name: Smoke test
         shell: pwsh
         run: |
@@ -67,12 +72,20 @@ jobs:
           if (-not (Test-Path $exe)) { throw "no exe at $exe" }
           if (-not (Test-Path '.\bin\Mono.Cecil.dll')) { throw 'Mono.Cecil was not copied next to the exe' }
 
-          # Launch and give up if it dies. A WinForms app that throws in its constructor exits
-          # immediately, so surviving two seconds is the assertion.
+          # Launch, and require a real window rather than merely a live process. A WPF app whose XAML
+          # fails to load can end up running with nothing on screen, so a process that stays up is not
+          # on its own evidence that the window was built.
           $process = Start-Process $exe -PassThru
-          Start-Sleep -Seconds 4
-          if ($process.HasExited) { throw "the launcher exited immediately (code $($process.ExitCode))" }
+          Start-Sleep -Seconds 6
 
+          if ($process.HasExited) { throw "the launcher exited immediately (code $($process.ExitCode))" }
+          $process.Refresh()
+          if ($process.MainWindowHandle -eq 0) {
+              Stop-Process -Id $process.Id -Force
+              throw 'the launcher stayed up but never created a window - a XAML resource probably failed to load'
+          }
+
+          Write-Host "window: '$($process.MainWindowTitle)'"
           Stop-Process -Id $process.Id -Force
           Write-Host 'started and stayed up'
 

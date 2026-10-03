@@ -1,0 +1,99 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The launcher, built with the SDK rather than by hand-rolled csc.
+
+    WPF, targeting net48 rather than net8/net10 deliberately: .NET Framework 4.8 ships with every
+    Windows 10 and 11, so the output stays framework-dependent and runs on a machine with nothing
+    installed. That is the property the two-file download depends on, and moving to a modern TFM would
+    trade it for a runtime requirement on the player's machine.
+
+    LangVersion stays at 7.3, matching the other projects in this repository. It is old for WPF but
+    changing the language level is a separate decision from changing the UI framework, and mixing the
+    two makes this harder to review than it needs to be.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>7.3</LangVersion>
+    <AssemblyName>ScamWYF.Launcher</AssemblyName>
+    <RootNamespace>ScamWYF.Launcher</RootNamespace>
+
+    <!-- The staged Mono.Cecil is a plain dll beside the sources, not a package reference, and it is
+         deliberately not copied automatically: build.ps1 owns what lands in bin\ so the release zip
+         stays exactly two files. -->
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Off deliberately. Left on, the SDK writes a ScamWYF.Launcher.exe.config whose only content is
+         generated binding redirects - of which there are none, since the single external reference is
+         Mono.Cecil and there is nothing to unify. WPF does not need a config on net48, so without this
+         the release really is two files rather than three. -->
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+
+    <!--
+      Off, and it matters. By default the SDK appends "+<full commit sha>" to
+      AssemblyInformationalVersion, on top of whatever was passed in. Since build.ps1 already derives the
+      version from `git describe` - which includes the short sha, the commit count and the dirty marker -
+      the two combined into "1.3.0+g2872ebc.dirty.2872ebc33cf...", which is both wrong and different on
+      every machine that checks out the same commit. The tag-derived string is the one that is correct, so
+      the SDK must not add to it.
+    -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <!--
+      No pdb in Release, and this is deliberate rather than incidental. The SDK defaults Release builds
+      to a portable pdb, which would land in bin\ next to the exe and make it three files. The published
+      download has been the exe plus Mono.Cecil.dll since 1.0.0, and the release workflow refuses to zip
+      anything it did not name, so a pdb here would fail the packaging step rather than ship.
+
+      Debug builds keep theirs, which is where it is wanted anyway.
+    -->
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- App.xaml is declared explicitly because the default glob only treats App.xaml as the application
+         definition when it sits at the project root. Ours is under src\, and without this it compiles as
+         an ordinary page - which means no generated Main, and the build fails with CS5001. -->
+    <ApplicationDefinition Include="src\App.xaml" />
+    <Page Remove="src\App.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Not NuGet, and not a PackageReference: see the note above. Referenced by path so the compiler
+         sees it without anything being restored. -->
+    <Reference Include="Mono.Cecil">
+      <HintPath>vendor\Mono.Cecil.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- JavaScriptSerializer, used to read GitHub's release JSON. The SDK does not add framework
+         assemblies implicitly the way the old hand-written csc list did.
+
+         System.Web is referenced alongside it because the XAML markup compiler, on seeing a reference to
+         System.Web.Extensions, tries to resolve System.Web too and fails with an unhelpful MC1000 if it
+         is not there. -->
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Web" />
+
+    <!-- ZipArchive, used to unpack a downloaded release. -->
+    <Reference Include="System.IO.Compression" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The tests are their own project. Without this the default glob would pull tests\GetModsTests.cs
+         into the application, where it would collide on a second Main. -->
+    <Compile Remove="tests\**" />
+    <Page Remove="tests\**" />
+    <None Remove="tests\**" />
+  </ItemGroup>
+
+</Project>

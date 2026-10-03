@@ -52,7 +52,7 @@ jobs:
 
       - name: Build
         shell: pwsh
-        run: .\build.ps1 -NoCopy
+        run: .\build.ps1
 
       # Cheap, offline, and the kind of thing that should never be discovered during a release. The
       # install path is the only part of this tool that downloads and writes code, so its defences are
@@ -105,12 +105,21 @@ jobs:
               if (-not (Test-Path $path)) { throw "not in bin\: $name" }
           }
 
+          # A pdb is tolerated but never packaged: Release sets DebugType=none, so there should not be
+          # one, but a Debug build pointed at bin\ would leave one and that is a build setting rather
+          # than a mistake worth failing a release over. Anything else in bin\ is unexplained.
+          $allowed = $expected + @('ScamWYF.Launcher.pdb')
+
           $unexpected = Get-ChildItem bin -Recurse -File |
-              Where-Object { $expected -notcontains $_.Name } |
+              Where-Object { $allowed -notcontains $_.Name } |
               ForEach-Object { $_.FullName }
 
           if ($unexpected) {
               throw "bin\ holds files this release does not intend to publish: $($unexpected -join ', ')"
+          }
+
+          if (Test-Path '.\bin\ScamWYF.Launcher.pdb') {
+              Write-Host '  (a pdb is present and will not be packaged)'
           }
 
           $zip = "ScamWYF.Launcher-$env:GITHUB_REF_NAME.zip"

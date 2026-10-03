@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The launcher's tests.
+
+    These compile the app's own sources rather than a reference to the built launcher, which is the same
+    choice the hand-rolled csc runner made and for the same reason: the tests exist to exercise GameInstall,
+    PluginScanner, ModManager, Http, ModCatalogue and ModInstaller, and compiling those files directly
+    means there is no second copy of the logic to drift out of step with the first.
+
+    Consequence worth stating: the UI is not under test, because the UI is presentation and these tests are
+    about what happens to files on disk. What that leaves uncovered is listed in README.md under Testing.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <!-- Deliberately not UseWPF. The sources included below are the UI-free half of the launcher, so the
+         test binary needs no WPF assemblies and starts faster. -->
+    <UseWPF>false</UseWPF>
+    <LangVersion>7.3</LangVersion>
+    <AssemblyName>Launcher.Tests</AssemblyName>
+    <RootNamespace>ScamWYF.Launcher.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- The default run is offline; -Online swaps which of the two programs is compiled. Both define a
+         Main, and an assembly may only have one, so the switch has to be a compile-time choice rather than
+         a runtime argument. tools\test-getmods.ps1 passes it. -->
+    <Online Condition="'$(Online)' == ''">false</Online>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The UI-free half of the launcher, named explicitly. Everything excluded here is a view, a dialog,
+         or the window that owns them - all of which need WPF. -->
+    <Compile Include="..\src\**\*.cs"
+             Exclude="..\src\App.xaml.cs;..\src\Dialogs.cs;..\src\MainWindow.xaml.cs;..\src\views\**\*.cs" />
+
+    <Reference Include="Mono.Cecil">
+      <HintPath>..\vendor\Mono.Cecil.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Web" />
+    <Reference Include="System.IO.Compression" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(Online)' != 'true'">
+    <Compile Remove="OnlineModTests.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(Online)' == 'true'">
+    <Compile Remove="GetModsTests.cs" />
+  </ItemGroup>
+
+</Project>

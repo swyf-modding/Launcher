@@ -1,0 +1,90 @@
+<UserControl x:Class="ScamWYF.Launcher.Views.SetupView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent"
+             Padding="16">
+
+    <!--
+        The setup tab: what is missing from the install, and a button to run the setup script.
+
+        The status list is generated from probing the install rather than hardcoded, so a new piece of
+        setup can be added to the scripts without this file learning about it. Anything the install needs
+        shows a way to get it, because "not ready" without a next step is the least useful thing a setup
+        tool can say.
+    -->
+    <Grid Grid.IsSharedSizeScope="True">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="240" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="Headline" Grid.Row="0" Style="{StaticResource HeadingText}" />
+
+        <!-- The columns are declared twice - once for the header, once for the rows - and tied together
+             by SharedSizeGroup. That is what a real table needs: a last column that takes up the width
+             that is left over, and no horizontal scrollbar to reach it. -->
+        <Grid Grid.Row="1" Margin="0,0,0,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="230" SharedSizeGroup="Check" />
+                    <ColumnDefinition Width="90" SharedSizeGroup="State" />
+                    <ColumnDefinition Width="*" SharedSizeGroup="Detail" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Check" Style="{StaticResource ColumnHeaderText}" />
+                <TextBlock Grid.Column="1" Text="State" Style="{StaticResource ColumnHeaderText}" />
+                <TextBlock Grid.Column="2" Text="Detail" Style="{StaticResource ColumnHeaderText}" />
+            </Grid>
+
+            <Border Grid.Row="0" Style="{StaticResource ColumnHeaderRule}" VerticalAlignment="Bottom" />
+
+            <ListView x:Name="Checks" Grid.Row="1">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                        <Setter Property="Foreground" Value="{Binding Brush}" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Height="26">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="230" SharedSizeGroup="Check" />
+                                <ColumnDefinition Width="90" SharedSizeGroup="State" />
+                                <ColumnDefinition Width="*" SharedSizeGroup="Detail" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" Style="{StaticResource CellText}" />
+                            <TextBlock Grid.Column="1" Text="{Binding State}" Style="{StaticResource CellText}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Detail}" Style="{StaticResource CellText}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
+            <Button x:Name="RunButton" Content="Set up / repair" MinWidth="130"
+                    Style="{StaticResource AccentButton}" Click="OnRun" />
+            <Button x:Name="OfflineButton" Content="Offline" Margin="8,0,0,0"
+                    Style="{StaticResource FlatButton}" Click="OnRunOffline" />
+            <Button Content="Open game folder" Margin="8,0,0,0"
+                    Style="{StaticResource FlatButton}" Click="OnOpenFolder" />
+        </StackPanel>
+
+        <!-- Read-only, monospaced, no wrap: this is script output, so the line breaks are structure. -->
+        <TextBox x:Name="Output" Grid.Row="3"
+                 IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                 FontFamily="{StaticResource MonoFont}" FontSize="11.5"
+                 VerticalContentAlignment="Top"
+                 HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />
+
+        <CheckBox x:Name="FollowLog" Grid.Row="4" Margin="0,10,0,0" IsChecked="True"
+                  Content="Follow the log while it runs" />
+    </Grid>
+</UserControl>
