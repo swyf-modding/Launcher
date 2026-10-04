@@ -25,6 +25,7 @@
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
   - [Developer Setup](#developer-setup)
+  - [The Setup payload](#the-setup-payload)
   - [Usage](#usage)
   - [Testing](#testing)
 - [Compatibility](#compatibility)
@@ -50,7 +51,8 @@ Your Friends**. Three tabs: fix the install, manage mods, read the log.
   separate checks, because a half-installed game is the case that matters and "not installed" is not a
   useful answer to it
 - **Runs the real setup script.** Delegates to [Setup](https://github.com/swyf-modding/Setup)'s `setup.ps1` and streams its
-  output live, rather than reimplementing it in a button handler
+  output live, rather than reimplementing it in a button handler. Those scripts **ship inside this
+  download**, vendored binaries and all, so the Setup tab works from an unpacked zip
 - **Lists and manages mods.** Every dll in `plugins` and `plugins_disabled`, read from `[BepInPlugin]`
   metadata, with enable, disable and delete
 - **Shows the log where you can act on it.** `LogOutput.log` with the interesting lines picked out, and
@@ -79,42 +81,63 @@ This project is not affiliated with or endorsed by the developers or publisher o
   [Compatibility](#compatibility)
 - Windows x64 with .NET Framework 4.8 or later — preinstalled on Windows 10 and 11, and **all the
   launcher needs**. No game-side runtime, no Mono, no .NET SDK to run it
-- [Setup](https://github.com/swyf-modding/Setup) alongside it, for the Setup tab
+
+Nothing else. [Setup](https://github.com/swyf-modding/Setup) used to be a second repository to clone
+before this tool did anything; its scripts and vendored binaries are in the download now.
 
 ### Installation
 
-1. Clone [Setup](https://github.com/swyf-modding/Setup) next to the launcher, so its scripts and vendored binaries are found:
-
-   ```text
-   Launcher\bin\ScamWYF.Launcher.exe
-   Setup\setup.ps1
-   ```
-
+1. Download the latest release and unzip it.
 2. Run `ScamWYF.Launcher.exe`.
 
-There is nothing to install. `bin\` holds two files and both are yours to move wherever you like.
+There is nothing to install, and no second download.
+
+```text
+ScamWYF.Launcher.exe
+Mono.Cecil.dll
+Setup\
+|-- setup.ps1             the Setup tab runs this
+|-- SETUP-VERSION.txt     which Setup these scripts are, as recorded at build time
+|-- GameDir.ps1
+|-- install-bepinex.ps1
+|-- tools\
+`-- vendor\
+    |-- corlib\           the unstripped BCL, about 12 MB
+    `-- doorstop\         the loader half
+```
+
+**Keep the `Setup\` folder.** It is most of the download and it is not optional — the Setup tab is those
+scripts, and they carry the vendored Doorstop and the unstripped corlib, which cannot be fetched at
+runtime. An incomplete unzip shows up immediately as a **Setup scripts: missing** row on the Setup tab
+and a disabled **Set up / repair** button, and the tab says what to do about it.
+
+Move the folder anywhere you like; the launcher finds `Setup\` relative to its own exe.
 
 ### Developer Setup
 
 ```powershell
 git clone https://github.com/swyf-modding/Launcher.git
+git clone https://github.com/swyf-modding/Setup.git     # a sibling of Launcher\
 cd Launcher
 dotnet build -c Release    # a complete build on its own
-.\build.ps1                # the same, plus tag versioning and a two-file bin\
+.\build.ps1                # the same, plus tag versioning, the Setup payload, and a publishable bin\
 .\build.ps1 -Cecil C:\path\to\Mono.Cecil.dll
 .\build.ps1 -Version 1.2.3 # stamp a version rather than reading the tag
+.\build.ps1 -SetupPath C:\src\Setup                     # Setup is not a sibling
+.\build.ps1 -NoSetup        # exe only; the Setup tab will be disabled
 ```
 
 An SDK-style project — `Launcher.csproj` — like the mods. No NuGet packages and no restore step: the only
 external dependency is [Mono.Cecil](vendor/README.md), staged in `vendor\` and referenced by path, so the
 build needs neither network nor game.
 
-`build.ps1` is a thin wrapper around `dotnet build`. It adds the two things a plain build cannot do —
-stamping the version from the nearest git tag, and reducing `bin\` to the two published files — and
-`dotnet build -c Release` remains a complete, equivalent command. It used to compile Roslyn by hand with
-no project file; that stopped being sensible when the UI became WPF, because XAML has to be compiled by
-MSBuild's markup compiler, so a `.csproj` arrived regardless and the hand-rolled `csc` line became a
-second description of the same build that could disagree with the first.
+`build.ps1` is a thin wrapper around `dotnet build`. It adds the three things a plain build cannot do —
+stamping the version from the nearest git tag, staging Setup's payload into `bin\Setup\`, and reducing
+`bin\` to what gets published — and `dotnet build -c Release` remains a complete, equivalent command for
+the exe. It used to compile Roslyn by hand with no project file; that stopped being sensible when the UI
+became WPF, because XAML has to be compiled by MSBuild's markup compiler, so a `.csproj` arrived
+regardless and the hand-rolled `csc` line became a second description of the same build that could
+disagree with the first.
 
 **This targets the .NET Framework 4.8 reference assemblies and needs no game install at all.** The mods
 compile against the game's own assemblies; this does not. A tool whose job is to repair a broken game
@@ -123,7 +146,7 @@ install cannot share a dependency with the thing it repairs.
 net48 rather than a modern .NET is deliberate. A `net8.0`/`net10.0` build would be framework-dependent
 too, but on a runtime that is not present by default, so a player whose game install is already broken
 would have to install something before this would start. .NET Framework 4.8 ships with every Windows 10
-and 11, so the download stays two files and runs on a clean machine.
+and 11, so the download runs on a clean machine.
 
 The build is deterministic: the same commit compiles to the same bytes, which is what makes it worth
 saying afterwards exactly which commit a published binary came from.
@@ -147,6 +170,30 @@ about, so a local build cannot be mistaken for a release. With no tags at all th
 Two fallbacks, because a build has to work outside a checkout: no `git`, or no `.git\`, warns and
 stamps `0.0.0`; `-Version` sets the version outright, which is what a build from a source archive needs.
 
+### The Setup payload
+
+The Setup tab is not an implementation of setup; it runs [Setup](https://github.com/swyf-modding/Setup)'s
+scripts. Those scripts carry the vendored Doorstop and the unstripped corlib — about 12 MB of binaries
+that cannot be reimplemented or fetched at runtime — so the release has to contain them or the tab does
+nothing. It does.
+
+`bin\Setup\` is copied out of a Setup checkout at build time, by name, into Setup's own layout. The
+layout matters: the scripts dot-source each other with paths relative to `$PSScriptRoot`, so a
+tidied-up copy breaks the first thing a user runs. `build.ps1` records which Setup it took in
+`SETUP-VERSION.txt`, and the Setup tab reads that back and shows it, so a given launcher build can be
+matched to the scripts it shipped with.
+
+Setup is found beside this repository, or wherever `-SetupPath` points. A missing one is a **warning
+locally** — someone with only this repository can still build and work on the tool, they just get a
+launcher whose Setup tab is disabled — and a **failure in CI**, because a release published without the
+payload is the exact problem this arrangement exists to solve. `-NoSetup` is the explicit opt-out for the
+first case.
+
+Setup is checked out as a second plain clone in both workflows rather than vendored or made a submodule,
+so this repository stays free of 12 MB of redistributable binaries in its history, and Setup stays the
+one place those scripts are edited. Both workflows pin a Setup **tag**, not its branch, so a release is
+reproducible; the resolved commit is printed in the run summary and written into the zip.
+
 ### Usage
 
 **Setup** probes the install and runs the setup script.
@@ -158,10 +205,12 @@ stamps `0.0.0`; `-Version` sets the version outright, which is what a build from
 | Corlib override | the usual cause of "it crashed" — the shipped `mscorlib` is stripped and BepInEx cannot start without it |
 | Override wired up | `doorstop_config.ini` has to point at it |
 | BepInEx | downloaded from GitHub, or already there |
+| Setup scripts | the only row about *this download* rather than the game — that the payload is present, and which Setup it is |
 
-**Set up / repair** runs `setup.ps1` and streams its output into the window as it goes. **Offline** is
-there for when BepInEx has already been downloaded, or there is no network. The tab says where to get
-`Setup` if it is not next to the exe.
+**Set up / repair** runs `Setup\setup.ps1` and streams its output into the window as it goes. **Offline**
+is there for when BepInEx has already been downloaded, or there is no network. If the scripts are not
+beside the exe the buttons disable themselves and the tab says the download is incomplete, rather than
+leaving you to work out why a tab you installed is refusing to do its job.
 
 **Mods** lists every dll in both folders with **Enable**, **Disable** and **Delete**. BepInEx has no
 enable/disable of its own, so a toggle is a file move between the two folders — the same thing a person
@@ -306,7 +355,7 @@ src/
 |-- Theme.xaml         The palette and every control style - see "How it looks"
 |-- Dialogs.cs         Modal confirmations, themed; WPF's MessageBox cannot be
 |-- GameInstall.cs     Finding and probing an install
-|-- SetupRunner.cs     Running setup.ps1 and streaming its output
+|-- SetupRunner.cs     Running Setup\setup.ps1, streaming its output, and naming the bundled version
 -- ModManager.cs      Enable, disable, delete - the file operations
 |-- ModConfig.cs       Reading, checking and rewriting a mod's BepInEx config
 |-- PluginScanner.cs   Reading [BepInPlugin] metadata with Cecil
@@ -317,15 +366,19 @@ src/
 `-- views/
     |-- SetupView      The Setup tab
     |-- ModsView       The Mods tab
-|-- GetModsView    The Get mods tab
+    |-- GetModsView    The Get mods tab
       |-- ConfigWindow   The per-mod settings editor
       `-- LogView        The Log tab
-build.ps1              dotnet build, plus tag versioning and a two-file bin\
+build.ps1              dotnet build, plus tag versioning, the Setup payload, and a publishable bin\
 tools/
 `-- test-getmods.ps1   Tests for the above: -Online also exercises a real download
 tests/                 Launcher.Tests.csproj, GetModsTests.cs (offline), OnlineModTests.cs (needs network)
 vendor/                Mono.Cecil, staged and pinned
 ```
+
+`bin\Setup\` is not in that list because it is not in the repository — it is staged from a Setup
+checkout by `build.ps1` at build time and lands in the release zip. See
+[The Setup payload](#the-setup-payload).
 
 The split between `src\` and `src\views\` is the UI-free half against the UI. Everything the tests compile
 is the former, which is why `tests\Launcher.Tests.csproj` can build a test binary with no WPF at all.
@@ -423,7 +476,10 @@ Hitting it says so, rather than reporting a generic failure.
 Windows runner: build, start the exe and check it survives, then upload `bin\`.
 
 That is all possible because of the two decisions above — no game needed to build, and Cecil staged
-in-repo. The mods' workflows are two-tiered precisely because they do need the game; see
+in-repo. The one thing it does need is Setup, so it checks that repository out alongside this one and
+hands it to `build.ps1 -SetupPath`, then verifies the staged payload by name and parses every bundled
+script. A run that produced a launcher with a dead Setup tab would pass every other step here, so it is
+checked directly. The mods' workflows are two-tiered precisely because they do need the game; see
 [mod-lib's](https://github.com/swyf-modding/mod-lib#continuous-builds) for what that looks like.
 
 ---
@@ -437,8 +493,9 @@ git tag v1.2.3
 git push origin v1.2.3
 ```
 
-[`.github/workflows/release.yml`](.github/workflows/release.yml) builds the tagged commit, packages
-`bin\` into `ScamWYF.Launcher-v1.2.3.zip` and publishes it as a GitHub release with generated notes.
+[`.github/workflows/release.yml`](.github/workflows/release.yml) checks out Setup at a pinned tag, builds
+the tagged commit, packages `bin\` into `ScamWYF.Launcher-v1.2.3.zip` and publishes it as a GitHub
+release with generated notes.
 
 Three checks stand between a tag and a published binary, because a wrong version in a release is worse
 than no release:
@@ -453,8 +510,18 @@ It **rebuilds** rather than reusing the `ci.yml` artefact, on purpose: artefacts
 and tags do not, so a release driven from an artefact would one day have nothing to publish. The build
 is deterministic, so the bytes are the same either way.
 
-The zip holds both files — the exe and `Mono.Cecil.dll` beside it. Shipping one without the other
-gives an exe that dies on startup with a `FileNotFoundException`, so the release step checks for both.
+The zip holds three things: the exe, `Mono.Cecil.dll` beside it, and the `Setup\` folder. The first two
+have been checked since 1.0.0 — shipping the exe without the Cecil gives an exe that dies on startup
+with a `FileNotFoundException` — and the third is checked the same way, because a release without it
+ships a launcher that starts and cannot set up a game, which is the failure this arrangement was made to
+end. The packaging step refuses to zip anything it did not name, and `build.ps1` decides the contents
+of `Setup\` by name from the Setup manifest rather than by globbing it.
+
+**Both versions are published.** `bin\Setup\SETUP-VERSION.txt` records which Setup was bundled, the job
+summary prints it beside the launcher's own version, and the Setup tab shows it. The launcher and Setup
+are released separately, so "which scripts did this launcher ship with" is otherwise unanswerable from
+the zip in front of you. To move a Setup release out to users, bump `SETUP_REF` in `ci.yml` and
+`release.yml` — see [RELEASING.md](RELEASING.md).
 
 **The mods cannot use this workflow.** They compile against the game's own assemblies, which a hosted
 runner cannot have, so their releases are cut by hand on a machine with the game — build, package both
@@ -477,6 +544,10 @@ This tool runs a PowerShell script and moves files inside your game install. Bot
 both are visible — the Setup tab streams the script's own output rather than summarising it — but
 install only releases you trust.
 
+The scripts it runs are in the download rather than fetched at runtime, so what runs is what was
+reviewed and released. `Setup\vendor\` also carries the licence texts for what it redistributes: the
+Mono class libraries (MIT) and Doorstop and BepInEx (LGPL-2.1).
+
 ---
 
 ## License
@@ -484,7 +555,9 @@ install only releases you trust.
 MIT — Copyright © 2026 Ras_rap. See [LICENSE](LICENSE).
 
 [`vendor\Mono.Cecil.dll`](vendor/README.md) is a third-party binary under its own MIT licence, and is not
-covered by this one.
+covered by this one. The same applies to `Setup\`, which is redistributed unmodified from the
+[Setup](https://github.com/swyf-modding/Setup) repository under its own licence, together with the
+licence texts for the Mono class libraries and Doorstop binaries it carries.
 
 ---
 

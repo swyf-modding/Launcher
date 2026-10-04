@@ -65,6 +65,16 @@ namespace ScamWYF.Launcher.Views
             _rows.Add(new CheckRow("BepInEx", install.HasBepInEx,
                 install.HasBepInEx ? install.BepInExCore : "not installed"));
 
+            // The launcher check, unlike the five above it. Those are facts about the game install;
+            // this one is a fact about this download, and it is the only way to tell a complete zip from
+            // a partial one without guessing from two disabled buttons. It also names the Setup the
+            // build pinned, which is what "which scripts did this launcher ship with" needs to answer.
+            var setup = Host.Setup;
+            _rows.Add(new CheckRow("Setup scripts", setup.IsAvailable,
+                setup.IsAvailable
+                    ? (setup.BundledVersion ?? "bundled with this launcher")
+                    : "not found beside the exe - see the note below"));
+
             var canRun = install.HasGame;
             RunButton.IsEnabled = canRun && Host.Setup.IsAvailable;
             OfflineButton.IsEnabled = RunButton.IsEnabled;

@@ -1,6 +1,10 @@
 # Build output
 bin/
 
+# Where CI puts its Setup checkout (see .github\workflows\ci.yml). Ignored because it is a whole second
+# repository, and committing one by accident is a 12 MB diff nobody reviews.
+setup-src/
+
 # Generated assembly attributes, written by build.ps1 from the git tag. Deliberately not committed:
 # a checked-in copy is the version drift this replaced.
 obj/

@@ -10,8 +10,23 @@ name: release
 # and tags do not, so a release driven from an artefact would one day silently have nothing to publish.
 # The build is deterministic, so the bytes are the same either way.
 #
+# It also checks out Setup, because the release ships Setup's scripts: the Setup tab runs them, and
+# they carry the vendored Doorstop and the unstripped corlib. A user downloads one zip and the tab
+# works, with no second repository to clone.
+#
 # The mods cannot use this workflow: they compile against the game's own assemblies, so their build
 # needs a self-hosted runner with the game installed.
+
+env:
+  # The Setup tag bundled into the published zip. Pinned to a tag rather than Setup's main, because the
+  # whole point of building from a tag here is reproducibility, and a moving branch is the opposite of
+  # that. The resolved commit lands in bin\Setup\SETUP-VERSION.txt and so travels inside the release:
+  # anyone holding a given zip can say exactly which Setup it came with, and two Launcher releases built
+  # from the same SETUP_REF ship the same Setup.
+  #
+  # Bump this when a Setup release should reach users. ci.yml pins the same value, so a bump is caught
+  # by a normal push rather than being discovered in a release.
+  SETUP_REF: v1.0.0
 
 on:
   push:
@@ -31,6 +46,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Not a submodule and not vendored: a second plain checkout, handed to build.ps1 by path. A
+      # submodule would put Setup's 12 MB of vendored binaries into every clone of this repository and
+      # into this one's history, which is the cost the sibling checkout exists to avoid.
+      - name: Check out Setup
+        uses: actions/checkout@v4
+        with:
+          repository: swyf-modding/Setup
+          ref: ${{ env.SETUP_REF }}
+          path: setup-src
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -52,7 +77,7 @@ jobs:
 
       - name: Build
         shell: pwsh
-        run: .\build.ps1
+        run: .\build.ps1 -SetupPath .\setup-src
 
       # Cheap, offline, and the kind of thing that should never be discovered during a release. The
       # install path is the only part of this tool that downloads and writes code, so its defences are
@@ -78,6 +103,16 @@ jobs:
           if (-not (Test-Path $exe)) { throw "no exe at $exe" }
           if (-not (Test-Path '.\bin\Mono.Cecil.dll')) { throw 'Mono.Cecil was not copied next to the exe' }
 
+          # Stamped at build time from the Setup tag, and it has to be there. A release whose Setup
+          # folder is empty produces a launcher that downloads, starts, and then offers a disabled
+          # Setup tab with no explanation - the exact experience this workflow exists to end.
+          if (-not (Test-Path -LiteralPath '.\bin\Setup\setup.ps1')) {
+              throw 'bin\Setup\setup.ps1 is missing - the release would ship a dead Setup tab'
+          }
+          $setupStamp = (Get-Content -LiteralPath '.\bin\Setup\SETUP-VERSION.txt' |
+                         Where-Object { $_.Trim() } | Select-Object -First 1)
+          Write-Host "  bundled:   $setupStamp"
+
           $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $exe))
           Write-Host "  AssemblyVersion: $($info.FileVersion)"
           Write-Host "  ProductVersion: $($info.ProductVersion)"
@@ -89,16 +124,31 @@ jobs:
               throw "The binary's full version is '$($info.ProductVersion)', which does not name $bare and a commit."
           }
 
+          # Both versions, in the job summary, so the pairing of a Launcher release to a Setup commit
+          # is recorded by the run rather than only inside the zip. Someone asking "which scripts did
+          # v1.6.0 ship" should not have to download it to find out.
+          #
+          # Built as a string rather than a here-string because a here-string's terminator has to sit at
+          # the start of a line, and everything in a run: block is indented.
+          @(
+              '| Component | Version |'
+              '|---|---|'
+              "| Launcher | ``$($info.ProductVersion)`` |"
+              "| Setup | ``$setupStamp`` (ref ``$env:SETUP_REF``) |"
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
       - name: Package
         shell: pwsh
         run: |
-          # Both files: the tool is the exe plus the Cecil it reads plugin metadata with, and shipping
-          # one without the other gives an exe that dies on startup with a FileNotFoundException.
+          # Three things: the exe, the Cecil it reads plugin metadata with, and the Setup folder the
+          # Setup tab runs. Shipping the exe without the Cecil gives an exe that dies on startup with a
+          # FileNotFoundException; shipping it without Setup gives a launcher that starts and cannot set
+          # up a game. Neither failure says which file was missing.
           #
           # Named explicitly rather than zipping bin\*. A wildcard picks up whatever else happens to be
           # in there - which is how a test binary got into a published zip once - and a release should be
           # decided by this list, not by the state of a build folder.
-          $expected = @('ScamWYF.Launcher.exe', 'Mono.Cecil.dll')
+          $expected = @('ScamWYF.Launcher.exe', 'Mono.Cecil.dll', 'Setup')
 
           foreach ($name in $expected) {
               $path = Join-Path 'bin' $name
@@ -107,21 +157,43 @@ jobs:
 
           # A pdb is tolerated but never packaged: Release sets DebugType=none, so there should not be
           # one, but a Debug build pointed at bin\ would leave one and that is a build setting rather
-          # than a mistake worth failing a release over. Anything else in bin\ is unexplained.
-          $allowed = $expected + @('ScamWYF.Launcher.pdb')
+          # than a mistake worth failing a release over.
+          #
+          # Everything under bin\Setup is allowed, because build.ps1 decides that list by name from the
+          # Setup manifest and has already verified each file is present and non-empty. Re-deriving the
+          # whole set here would be a second copy of that list that could disagree with the first - which
+          # is the same mistake the allowlist below exists to prevent. What is checked instead is the
+          # thing that actually matters: that the folder is not empty, and that nothing inside it is.
+          $allowed = @('ScamWYF.Launcher.exe', 'Mono.Cecil.dll', 'ScamWYF.Launcher.pdb')
 
           $unexpected = Get-ChildItem bin -Recurse -File |
-              Where-Object { $allowed -notcontains $_.Name } |
+              Where-Object {
+                  $relative = $_.FullName.Substring((Resolve-Path 'bin').Path.Length).TrimStart([char[]]'\/')
+                  $top = ($relative -split '\\')[0]
+                  ($allowed -notcontains $relative) -and ($top -ne 'Setup')
+              } |
               ForEach-Object { $_.FullName }
 
           if ($unexpected) {
               throw "bin\ holds files this release does not intend to publish: $($unexpected -join ', ')"
           }
 
+          $setupFiles = @(Get-ChildItem 'bin\Setup' -Recurse -File)
+          if (-not $setupFiles.Count) { throw 'bin\Setup is empty - the release would ship a dead Setup tab' }
+          $empty = $setupFiles | Where-Object { $_.Length -eq 0 }
+          if ($empty) {
+              throw "zero-length files in bin\Setup: $($empty.FullName -join ', ')"
+          }
+
           if (Test-Path '.\bin\ScamWYF.Launcher.pdb') {
               Write-Host '  (a pdb is present and will not be packaged)'
           }
 
+          $setupBytes = ($setupFiles | Measure-Object Length -Sum).Sum
+          Write-Host "  Setup: $($setupFiles.Count) files, $([math]::Round($setupBytes / 1MB, 1)) MB"
+
+          # Compressed rather than shipped raw: 12 MB of corlib is mostly .NET metadata and goes to a
+          # fraction of that, and it is one download either way.
           $zip = "ScamWYF.Launcher-$env:GITHUB_REF_NAME.zip"
           Compress-Archive -Path ($expected | ForEach-Object { Join-Path 'bin' $_ }) -DestinationPath $zip
           Write-Host "  $zip ($((Get-Item $zip).Length) bytes)"

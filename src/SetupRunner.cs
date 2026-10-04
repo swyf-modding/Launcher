@@ -32,13 +32,69 @@ namespace ScamWYF.Launcher
             get { return !string.IsNullOrEmpty(_setupScript) && File.Exists(_setupScript); }
         }
 
+        /// <summary>
+        /// Which Setup these scripts came from, as build.ps1 recorded it next to them.
+        /// </summary>
+        /// <remarks>
+        /// The launcher and the Setup repo are released separately, and a launcher build pins the Setup
+        /// tag it bundled. Reading that back is what makes "which scripts did this launcher ship with"
+        /// answerable from the zip the user already has, rather than from a guess or a network call -
+        /// which is the first question when a setup run does something unexpected.
+        ///
+        /// Null when the file is absent, which is a build made with -NoSetup rather than an error: the
+        /// Setup tab is simply disabled, and saying so beats reporting an empty version.
+        /// </remarks>
+        public string BundledVersion
+        {
+            get
+            {
+                if (!IsAvailable) return null;
+
+                try
+                {
+                    var stamp = Path.Combine(Path.GetDirectoryName(_setupScript), "SETUP-VERSION.txt");
+                    if (!File.Exists(stamp)) return null;
+
+                    // First non-blank line only. build.ps1 writes that one line as the contract and
+                    // leaves explanatory prose after it, which is for a person reading the folder and
+                    // would be noise in a table cell.
+                    foreach (var line in File.ReadAllLines(stamp))
+                    {
+                        var trimmed = line.Trim();
+                        if (trimmed.Length > 0) return trimmed;
+                    }
+                }
+                catch (IOException)
+                {
+                    // A version string is not worth failing a tab load over.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
+
+                return null;
+            }
+        }
+
         /// <summary>Where to tell the user to get it, when it is not there.</summary>
+        /// <remarks>
+        /// No longer "clone the Setup repo". The scripts ship inside the launcher's own folder now, so
+        /// the only way to be in this state is a build that left them out - a source build with
+        /// <c>-NoSetup</c>, or a download that was unpacked incompletely. Both are answered the same
+        /// way: get the whole launcher again. Telling someone to clone a second repository was the
+        /// thing being removed.
+        /// </remarks>
         public string MissingReason
         {
             get
             {
-                return "setup.ps1 was not found. Clone the Setup repo next to this tool:\n\n" +
-                    "  git clone https://github.com/swyf-modding/Setup.git\n";
+                return "The setup scripts are missing from this folder.\n\n" +
+                    "They are part of the download - setup.ps1 and a Setup\\ folder beside this exe - " +
+                    "so this is an incomplete unzip rather than something to install.\n\n" +
+                    "Get ScamWYF.Launcher again from\n" +
+                    "  https://github.com/swyf-modding/Launcher/releases\n" +
+                    "and keep the Setup\\ folder next to the exe.\n\n" +
+                    "Building from source instead? See build.ps1 -SetupPath.";
             }
         }
 

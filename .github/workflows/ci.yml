@@ -5,6 +5,18 @@ name: ci
 # Unlike the mods, this repo does not need the game: it targets .NET Framework 4.8, which every Windows
 # runner already has, and stages its own Mono.Cecil, so a hosted runner has everything it needs. That is
 # the reason the launcher is a separate repo with its own build rather than a mode of a mod.
+#
+# It does need Setup, because the Setup tab runs Setup's scripts and those scripts carry ~12 MB of
+# vendored binaries that have to be in the published zip. So Setup is checked out here too and handed to
+# build.ps1 with -SetupPath. Without that, the Setup tab would be dead in every artefact this workflow
+# produces, and every published release.
+
+env:
+  # The Setup tag whose scripts get bundled, pinned rather than tracking Setup's main for the same
+  # reason release.yml builds a tagged commit: a release has to be reproducible, and "whatever Setup's
+  # branch pointed at this morning" is not that. Bump it when a Setup release should reach users, and
+  # the commit it resolved to is recorded in bin\Setup\SETUP-VERSION.txt by every run that builds.
+  SETUP_REF: v1.0.0
 
 on:
   push:
@@ -19,6 +31,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # Into the workspace rather than beside it. build.ps1 finds a sibling Setup\ on its own, and a
+      # developer running these repos locally has it there; -SetupPath is what this needs, because
+      # actions/checkout does not write outside $GITHUB_WORKSPACE.
+      - name: Check out Setup
+        uses: actions/checkout@v4
+        with:
+          repository: swyf-modding/Setup
+          ref: ${{ env.SETUP_REF }}
+          path: setup-src
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
@@ -55,7 +77,88 @@ jobs:
 
       - name: Build
         shell: pwsh
-        run: .\build.ps1
+        run: .\build.ps1 -SetupPath .\setup-src
+
+      # The payload the Setup tab depends on, checked by name. build.ps1 already refuses to stage an
+      # incomplete one, so this is not checking whether the copy happened - it is checking that this
+      # build published a *usable* Setup, which is the property that was broken and the reason the zip
+      # grew.
+      #
+      # Specifically the eight corlib assemblies: a partial payload gets the user a button that runs a
+      # script which seeds half an override and then cannot start the game, and the failure lands in
+      # the game's log rather than in anything the launcher said. Cheaper to make sure here.
+      - name: Confirm the Setup payload is complete
+        shell: pwsh
+        run: |
+          $expected = @(
+              'setup.ps1'
+              'GameDir.ps1'
+              'install-bepinex.ps1'
+              'SETUP-VERSION.txt'
+              'tools\unstrip-awaiters.ps1'
+              'tools\find-vtable-breaks.ps1'
+              'tools\patch-preloader.ps1'
+              'tools\compare-corlib.ps1'
+              'tools\scan-missing-apis.ps1'
+              'vendor\corlib\mscorlib.dll'
+              'vendor\corlib\System.dll'
+              'vendor\corlib\System.Core.dll'
+              'vendor\corlib\System.Configuration.dll'
+              'vendor\corlib\System.Numerics.dll'
+              'vendor\corlib\System.Security.dll'
+              'vendor\corlib\System.Xml.dll'
+              'vendor\corlib\Mono.Security.dll'
+              'vendor\corlib\LICENSE-Mono'
+              'vendor\doorstop\winhttp.dll'
+              'vendor\doorstop\.doorstop_version'
+              'vendor\doorstop\doorstop_config.ini'
+              'vendor\doorstop\LICENSE'
+              # Redistribution obligations, not payload. Setup's own CI checks them, and a Launcher
+              # release is the thing that actually redistributes them, so this is where a missing
+              # licence text should be caught.
+              'LICENSE'
+              'README.md'
+              'vendor\README.md'
+              'vendor\corlib\LICENSE-Mono'
+          )
+
+          $missing = @()
+          foreach ($relative in $expected) {
+              # -LiteralPath rather than -Path: the names here are literal, and a path that happens to
+              # contain a wildcard character would otherwise be read as a pattern rather than a file.
+              $path = Join-Path 'bin\Setup' $relative
+              if (-not (Test-Path -LiteralPath $path)) { $missing += $relative }
+              elseif ((Get-Item -LiteralPath $path).Length -eq 0) { $missing += "$relative (empty)" }
+          }
+
+          if ($missing) {
+              throw ("bin\Setup is incomplete, so the Setup tab would be dead in this artefact:`n  " +
+                     ($missing -join "`n  "))
+          }
+
+          # Every script has to parse. Setup's own CI checks this in the Setup repo; repeating it here
+          # means a Launcher build refuses a payload whose scripts are broken, rather than discovering it
+          # on a user's machine with a game install at stake.
+          foreach ($script in Get-ChildItem -Path 'bin\Setup' -Filter *.ps1 -Recurse) {
+              $errors = $null
+              $null = [System.Management.Automation.Language.Parser]::ParseFile(
+                  $script.FullName, [ref]$null, [ref]$errors)
+              if ($errors -and $errors.Count) {
+                  $errors | ForEach-Object { Write-Host "  $($script.Name) line $($_.Extent.StartLineNumber): $($_.Message)" -ForegroundColor Red }
+                  throw "bundled $($script.Name) does not parse"
+              }
+          }
+
+          $stamp = (Get-Content -LiteralPath 'bin\Setup\SETUP-VERSION.txt' | Where-Object { $_.Trim() } | Select-Object -First 1)
+          Write-Host "  $stamp"
+          Write-Host "  $stamp" >> $env:GITHUB_STEP_SUMMARY
+
+          # Counted, not assumed from $expected: build.ps1 stages a few more files than this list names,
+          # and a count that silently disagrees with the folder is the sort of small wrongness that gets
+          # quoted back later as the truth.
+          $staged = @(Get-ChildItem 'bin\Setup' -Recurse -File)
+          $bytes = ($staged | Measure-Object Length -Sum).Sum
+          Write-Host ("  {0} files, {1:N1} MB" -f $staged.Count, ($bytes / 1MB))
 
       # A Color where a Brush belongs compiles, renders, and throws only when a trigger fires - so on
       # hover, or on a scrollbar thumb, or on a disabled control. Nothing else in this workflow would
@@ -287,8 +390,15 @@ jobs:
               'Write-Output "stub: done"',
               'exit 0'
           )
+          # The real setup.ps1 is moved aside rather than the folder being created fresh. This build now
+          # has a genuine bin\Setup\ payload in it - the thing the previous step verified - and the old
+          # `Remove-Item bin\Setup -Recurse` in the finally below would have thrown 12 MB of it away
+          # before the artefact was uploaded. Overwriting one file and putting it back is the smallest
+          # thing that gets a script in front of the tab.
           New-Item -ItemType Directory -Force -Path 'bin\Setup' | Out-Null
-          Set-Content -Path 'bin\Setup\setup.ps1' -Value $stub
+          $saved = Join-Path $env:RUNNER_TEMP 'launcher-ci-setup.ps1'
+          Copy-Item -LiteralPath 'bin\Setup\setup.ps1' -Destination $saved -Force
+          Set-Content -LiteralPath 'bin\Setup\setup.ps1' -Value $stub
 
           # A minimal stand-in for a game install, passed as the first argument.
           #
@@ -386,7 +496,11 @@ jobs:
           finally {
               if (-not $process.HasExited) { $process.CloseMainWindow() | Out-Null; Start-Sleep -Milliseconds 800 }
               if (-not $process.HasExited) { $process.Kill() }
-              Remove-Item 'bin\Setup' -Recurse -Force -ErrorAction SilentlyContinue
+              # The real script back, so the artefact uploaded below ships a working Setup rather than
+              # whatever this step happened to leave in its place.
+              if ($saved -and (Test-Path -LiteralPath $saved)) {
+                  Move-Item -LiteralPath $saved -Destination 'bin\Setup\setup.ps1' -Force
+              }
               Remove-Item $fake -Recurse -Force -ErrorAction SilentlyContinue
           }
 

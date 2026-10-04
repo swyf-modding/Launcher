@@ -63,10 +63,15 @@ namespace ScamWYF.Launcher
         /// Locate the setup scripts.
         /// </summary>
         /// <remarks>
-        /// Looked for next to this exe, because that is where a person who cloned the Setup repo
-        /// alongside it will have it, and because the scripts carry the vendored Doorstop and corlib
-        /// that this tool deliberately does not duplicate. Also tried as a sibling folder, for the
-        /// common case of all four repos checked out together.
+        /// Next to this exe first, because that is where the release puts them: build.ps1 stages
+        /// bin\Setup\ from the Setup repo, and the published zip contains it. The Setup tab has to work
+        /// from an unpacked download, which is the whole point of shipping them.
+        ///
+        /// Then upwards, for a developer working in a source tree. A bin\ built with -NoSetup has no
+        /// Setup\ folder in it, and the sibling checkout is right there - so falling back to it keeps
+        /// the tab usable without a rebuild. The returned path is the beside-the-exe one either way, so
+        /// a genuinely absent payload reports as missing rather than being resolved from somewhere the
+        /// user did not put it.
         /// </remarks>
         private static string FindSetupScript()
         {

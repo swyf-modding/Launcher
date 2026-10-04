@@ -10,10 +10,13 @@ How a release is cut across these five repositories, with the `gh` CLI.
 | **Mod-Handler** | yes, manual | Compiles against the game's own assemblies, so it builds only on a machine that has the game. |
 | **AI-Backend** | yes, manual | Same. |
 | **mod-lib** | no | A library, not something anyone installs. It has tags, because the mods resolve their versions from *their own* repo, but no release artefacts. |
-| **Setup** | no | Scripts, not binaries. A tag is enough; GitHub's source zip is the artefact. |
+| **Setup** | no | Scripts, not something anyone installs on its own. Its tags are what the Launcher pins. |
 
 The rule behind the split: **a repository gets a release if it produces a file somebody downloads.**
-mod-lib is consumed as a submodule and Setup as a clone, so there is nothing to attach.
+mod-lib is consumed as a submodule and Setup as a build-time checkout of the Launcher, so there is nothing
+to attach. Setup's *content* does reach users — it ships inside every Launcher zip, because the Setup tab
+runs those scripts — but it does so as part of someone else's release, so a Setup release of its own
+would be a second copy of the same scripts with a second version to keep straight.
 
 ## Order matters
 
@@ -48,12 +51,14 @@ gh run watch --repo swyf-modding/Launcher
 gh release view v1.2.3 --repo swyf-modding/Launcher
 ```
 
-Three gates stand between the tag and the published binary, because a wrong version in a release is
-worse than no release:
+Four gates stand between the tag and the published binary, because a wrong version in a release is worse
+than no release:
 
 - the tag must be on the commit that was built (`git describe` has to report the tag)
 - the tree must be clean — a build with uncommitted changes in it is refused
 - the binary's stamped version must equal the tag, and must name a commit
+- `bin\Setup\setup.ps1` must be there — a release without the Setup payload ships a launcher whose
+  Setup tab is permanently disabled, which is the failure the payload exists to prevent
 
 If a gate fails, nothing is published. That is deliberate: fix the tag and re-push rather than
 uploading a binary by hand.
@@ -63,6 +68,29 @@ To check a tag exists and points where you expect before pushing it:
 ```powershell
 gh api repos/swyf-modding/Launcher/git/ref/tags/v1.2.3
 ```
+
+### Setup is pinned, not tracked
+
+The published zip contains Setup's scripts and the ~12 MB of vendored binaries they carry, so a Launcher
+release is really a release of two repositories at once. Both workflows check Setup out separately, from
+`SETUP_REF` at the top of the file:
+
+```yaml
+env:
+  SETUP_REF: v1.0.0
+```
+
+**It is a tag, not a branch.** Tracking Setup's `main` would mean two Launcher releases built from the
+same commit could ship different Setup scripts, which is the same reason `release.yml` refuses to publish
+from a dirty tree. The commit that was bundled goes into `bin\Setup\SETUP-VERSION.txt`, is printed in the
+job summary beside the launcher's own version, and is shown on the launcher's Setup tab — so any release
+can be traced to the exact Setup it shipped without downloading it.
+
+**To move a Setup release out to users, bump `SETUP_REF` in both `ci.yml` and `release.yml` and push.**
+`ci.yml` running on that push is what tells you the new payload builds, stages and parses; a plain push
+to `main` is enough, no Setup tag required. The failure mode to watch for is the reverse: shipping a
+Launcher tag while `SETUP_REF` still names an old Setup is not an error anything catches, it just means
+a Setup fix you already tagged does not reach users until the next Launcher release.
 
 ## Cutting a mod release
 
