@@ -21,11 +21,50 @@
     -->
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TabControl x:Name="Tabs" Grid.Row="0" SelectionChanged="OnTabChanged" Padding="0">
+        <!-- A newer launcher release on GitHub. Collapsed until a check finds one: most launches
+             are already current, and a permanent strip would train everyone to ignore it. -->
+        <Border x:Name="UpdateBar" Grid.Row="0"
+                Visibility="Collapsed"
+                Background="{StaticResource AccentMutedBrush}"
+                BorderBrush="{StaticResource AccentBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="UpdateText"
+                           Grid.Column="0"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource TextBrush}" />
+
+                <Button x:Name="ViewReleaseButton"
+                        Grid.Column="1"
+                        Content="View release"
+                        Margin="12,0,0,0"
+                        MinWidth="100"
+                        Style="{StaticResource AccentButton}"
+                        Click="OnViewRelease" />
+
+                <Button Grid.Column="2"
+                        Content="Dismiss"
+                        Margin="8,0,0,0"
+                        MinWidth="80"
+                        Style="{StaticResource FlatButton}"
+                        Click="OnDismissUpdate" />
+            </Grid>
+        </Border>
+
+        <TabControl x:Name="Tabs" Grid.Row="1" SelectionChanged="OnTabChanged" Padding="0">
             <TabItem Header="Setup">
                 <views:SetupView x:Name="SetupPage" />
             </TabItem>
@@ -40,7 +79,7 @@
             </TabItem>
         </TabControl>
 
-        <Border Grid.Row="1"
+        <Border Grid.Row="2"
                 Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrush}"
                 BorderThickness="0,1,0,0"
@@ -49,16 +88,25 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <TextBlock x:Name="StatusText"
-                           Grid.Column="0"
-                           VerticalAlignment="Center"
-                           TextWrapping="Wrap"
-                           Foreground="{StaticResource MutedBrush}"
-                           Text="Ready." />
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            TextWrapping="Wrap"
+                            Foreground="{StaticResource MutedBrush}"
+                            Text="Ready." />
 
-                <Button Grid.Column="1"
+                <Button x:Name="CheckUpdatesButton"
+                        Grid.Column="1"
+                        Content="Check for updates"
+                        Margin="0,0,8,0"
+                        MinWidth="130"
+                        Style="{StaticResource FlatButton}"
+                        Click="OnCheckUpdates" />
+
+                <Button Grid.Column="2"
                         Content="Play"
                         MinWidth="100"
                         Style="{StaticResource AccentButton}"

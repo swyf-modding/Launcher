@@ -361,7 +361,7 @@ src/
 |-- PluginScanner.cs   Reading [BepInPlugin] metadata with Cecil
 |-- PluginEntry.cs     One mod on disk
 |-- Http.cs            The only code that touches the network: https only, redirects checked by hand
-|-- ModCatalogue.cs    The known mods, and what GitHub says their latest release is
+|-- ModCatalogue.cs    The mod list, live from ModCatalogue with a built-in fallback, and what GitHub says each latest release is
 |-- ModInstaller.cs    Download, unpack, verify, and only then install
 `-- views/
     |-- SetupView      The Setup tab
@@ -433,6 +433,13 @@ SHA-256 22792e5162396844820a27ed9c846c20ea9f098262a92d9fa164523f2c4fada0
 
 The version shown is read **out of each file**, not taken from the URL — that is the version that will
 actually load. Replacing something already installed gets a second confirmation, and there is no undo.
+
+**Where the list comes from.** The tab fetches `mods.json` from the
+[ModCatalogue](https://github.com/swyf-modding/ModCatalogue) repository on every check, so adding a mod
+means editing that file rather than cutting a launcher release. If the fetch fails — offline, rate
+limited — the tab falls back to the list compiled into the launcher and says so on the status line.
+Entries may point at repositories outside `swyf-modding`; those are marked with their owner in the list
+and named again in the install confirmation, because there is no shared review behind them.
 
 **From a URL.** For anything not on the list. Paste an `https` link to a `.dll` or a `.zip`. The host is
 named in the confirmation, because unlike the list there is nothing curated behind it. A `.zip` has each

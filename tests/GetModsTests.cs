@@ -33,7 +33,9 @@ namespace ScamWYF.Launcher.Tests
             LibraryWithoutAttributeIsAccepted();
             FolderRouting();
             CatalogueIsWellFormed();
+            LiveCatalogueRules();
             BepInExVersionRules();
+            LauncherUpdateRules();
             ModConfigFiles();
 
             Console.WriteLine();
@@ -357,6 +359,103 @@ namespace ScamWYF.Launcher.Tests
             }
         }
 
+        // ---------------------------------------------------------------- live catalogue
+
+        /// <summary>
+        /// The live mod list's parsing and validation, with no network.
+        /// </summary>
+        /// <remarks>
+        /// The catalogue decides what the tab offers to download and run, so its validation is the
+        /// safety-relevant half of the feature. Every refusal here is fail-closed: one bad entry rejects
+        /// the whole file and the tab falls back to the built-in list, which is what keeps a typo from
+        /// silently unlisting a mod - or from routing a file somewhere unintended.
+        /// </remarks>
+        private static void LiveCatalogueRules()
+        {
+            Section("Live catalogue");
+
+            var sources = ModCatalogue.ParseCatalogue(SampleCatalogue);
+            Check("reads every entry", sources.Count, 2);
+            Check("reads the repo", sources[0].Repo, "AI-Backend");
+            Check("an absent owner defaults to the project", sources[0].Owner, "swyf-modding");
+            Check("the project's own entry is not third-party", sources[0].IsThirdParty, false);
+            Check("reads an explicit owner", sources[1].Owner, "someone-else");
+            Check("a foreign owner is third-party", sources[1].IsThirdParty, true);
+            Check("the qualified name joins owner and repo", sources[1].QualifiedName, "someone-else/Extra-Mod");
+            Check("reads the files", sources[1].Files.Length, 1);
+            Check("a library file routes to core", sources[1].Files[0].Folder, ModFolder.Core);
+            Check("and expects no plugin attribute", sources[1].Files[0].ExpectsPluginAttribute, false);
+
+            Check("account names accept dots, dashes and underscores",
+                ModCatalogue.IsAccountName("some.one-else_2"), true);
+            Check("account names refuse slashes", ModCatalogue.IsAccountName("a/b"), false);
+            Check("account names refuse spaces", ModCatalogue.IsAccountName("a b"), false);
+            Check("account names refuse empties", ModCatalogue.IsAccountName(""), false);
+            Check("account names refuse nulls", ModCatalogue.IsAccountName(null), false);
+
+            Throws("a reply that is not JSON is refused",
+                () => ModCatalogue.ParseCatalogue("rate limit exceeded"));
+            Throws("a missing schema version is refused",
+                () => ModCatalogue.ParseCatalogue("{\"mods\": []}"));
+            Throws("a future schema version is refused, not guessed at",
+                () => ModCatalogue.ParseCatalogue("{\"schemaVersion\": 2, \"mods\": []}"));
+            Throws("an empty list is refused",
+                () => ModCatalogue.ParseCatalogue("{\"schemaVersion\": 1, \"mods\": []}"));
+            Throws("a missing list is refused",
+                () => ModCatalogue.ParseCatalogue("{\"schemaVersion\": 1}"));
+            Throws("a repo name with a slash is refused",
+                () => ModCatalogue.ParseCatalogue(CatalogueWith("\"repo\": \"a/b\"")));
+            Throws("a repo name with a space is refused",
+                () => ModCatalogue.ParseCatalogue(CatalogueWith("\"repo\": \"a b\"")));
+            Throws("a missing repo is refused",
+                () => ModCatalogue.ParseCatalogue("{\"schemaVersion\": 1, \"mods\": [{\"displayName\": \"X\", " +
+                    "\"summary\": \"Y\", \"files\": [{\"fileName\": \"A.dll\", \"folder\": \"plugins\", " +
+                    "\"expectsPluginAttribute\": true}]}]}"));
+            Throws("a missing display name is refused",
+                () => ModCatalogue.ParseCatalogue(CatalogueWithout("\"displayName\": \"Example\"")));
+            Throws("a missing summary is refused",
+                () => ModCatalogue.ParseCatalogue(CatalogueWithout("\"summary\": \"Does things.\"")));
+            Throws("a missing file list is refused",
+                () => ModCatalogue.ParseCatalogue(CatalogueWithout(
+                    "\"files\": [{\"fileName\": \"ScamWYF.Modding.Core.dll\", \"folder\": \"core\", " +
+                    "\"expectsPluginAttribute\": false}]")));
+            Throws("a file with a separator is refused",
+                () => ModCatalogue.ParseCatalogue(CatalogueWith("\"fileName\": \"sub/Thing.dll\"")));
+            Throws("a file without a .dll suffix is refused",
+                () => ModCatalogue.ParseCatalogue(CatalogueWith("\"fileName\": \"Thing.zip\"")));
+            Throws("a parent reference is refused",
+                () => ModCatalogue.ParseCatalogue(CatalogueWith("\"fileName\": \"..\"")));
+            Throws("an unknown folder is refused",
+                () => ModCatalogue.ParseCatalogue(CatalogueWith("\"folder\": \"elsewhere\"")));
+            Throws("a missing plugin flag is refused",
+                () => ModCatalogue.ParseCatalogue(CatalogueWithout("\"expectsPluginAttribute\": true")));
+        }
+
+        /// <summary>A minimal catalogue: one project entry, one third-party entry.</summary>
+        private const string SampleCatalogue =
+            "{\"schemaVersion\": 1, \"mods\": [" +
+            "{\"repo\": \"AI-Backend\", \"displayName\": \"AI Backend\", \"summary\": \"Routes AI calls.\", " +
+            "\"files\": [{\"fileName\": \"ScamWYF.AiBackend.dll\", \"folder\": \"plugins\", \"expectsPluginAttribute\": true}]}, " +
+            "{\"owner\": \"someone-else\", \"repo\": \"Extra-Mod\", \"displayName\": \"Example\", " +
+            "\"summary\": \"Does things.\", " +
+            "\"files\": [{\"fileName\": \"ScamWYF.Modding.Core.dll\", \"folder\": \"core\", \"expectsPluginAttribute\": false}]}" +
+            "]}";
+
+        /// <summary>The sample with one field replaced, for the refusal cases.</summary>
+        private static string CatalogueWith(string replacement)
+        {
+            if (replacement.StartsWith("\"repo\"")) return SampleCatalogue.Replace("\"repo\": \"Extra-Mod\"", replacement);
+            if (replacement.StartsWith("\"fileName\"")) return SampleCatalogue.Replace("\"fileName\": \"ScamWYF.Modding.Core.dll\"", replacement);
+            if (replacement.StartsWith("\"folder\"")) return SampleCatalogue.Replace("\"folder\": \"core\"", replacement);
+            return SampleCatalogue.Replace("\"schemaVersion\": 1", replacement);
+        }
+
+        /// <summary>The sample with one field removed, for the missing-field cases.</summary>
+        private static string CatalogueWithout(string field)
+        {
+            return SampleCatalogue.Replace(field + ", ", "").Replace(", " + field, "").Replace(field, "");
+        }
+
         // ---------------------------------------------------------------- helpers
 
         /// <summary>
@@ -415,6 +514,83 @@ namespace ScamWYF.Launcher.Tests
         {
             var shown = version ?? "(null)";
             Check("BepInEx would skip version '" + shown + "'", PluginScanner.BepInExWouldAccept(version), false);
+        }
+
+        // ---------------------------------------------------------------- launcher updates
+
+        /// <summary>
+        /// The update checker's version comparison, with no network.
+        /// </summary>
+        /// <remarks>
+        /// The comparison is the whole feature: the fetch is one GET and the banner is three controls,
+        /// but deciding "newer" wrongly either nags someone who is current or stays silent when they are
+        /// not. Every shape build.ps1 actually stamps is here - tags, commits past a tag, prereleases,
+        /// dirty trees and untagged builds.
+        /// </remarks>
+        private static void LauncherUpdateRules()
+        {
+            Section("Launcher update comparison");
+
+            // The ordinary cases.
+            UpdateIsOffered("1.2.3", "v1.2.4");
+            UpdateIsOffered("1.2.3+g0a1b2c3", "v1.2.4");
+            UpdateNotOffered("1.2.4", "v1.2.4");
+            UpdateNotOffered("1.2.4+g0a1b2c3", "v1.2.4");
+            UpdateNotOffered("1.2.5", "v1.2.4");
+
+            // A commit past the tag is still that release, not something newer than it.
+            UpdateNotOffered("1.2.4+1.g0a1b2c3", "v1.2.4");
+            UpdateIsOffered("1.2.4+1.g0a1b2c3", "v1.2.5");
+
+            // A finished release supersedes its own release candidate.
+            UpdateIsOffered("1.2.4-rc1+g0a1b2c3", "v1.2.4");
+
+            // A prerelease is never offered as an update to a finished release.
+            UpdateNotOffered("1.2.4", "v1.2.5-rc1");
+
+            // A newer prerelease supersedes an older one of the same numbers.
+            UpdateIsOffered("1.2.5-rc1", "v1.2.5-rc2");
+            UpdateNotOffered("1.2.5-rc2", "v1.2.5-rc1");
+
+            // Someone already on a prerelease is told about a higher prerelease.
+            UpdateIsOffered("1.2.4-rc1", "v1.2.5-rc1");
+
+            // A dirty tree is still the version it says it is.
+            UpdateNotOffered("1.2.4+g0a1b2c3.dirty", "v1.2.4");
+
+            // No tag behind the build: anything published counts as newer.
+            UpdateIsOffered("0.0.0+untagged.g0a1b2c3", "v1.0.0");
+
+            // A reply with no tag in it is not an update; it is a broken reply.
+            Check("empty tag is not an update", UpdateChecker.IsUpdateAvailable("1.2.3", ""), false);
+            Check("null tag is not an update", UpdateChecker.IsUpdateAvailable("1.2.3", null), false);
+
+            Section("Launcher release JSON");
+
+            var release = UpdateChecker.ParseReleaseJson(
+                "{\"tag_name\": \"v1.5.1\", " +
+                "\"html_url\": \"https://github.com/swyf-modding/Launcher/releases/tag/v1.5.1\", " +
+                "\"assets\": []}");
+            Check("reads the tag", release.TagName, "v1.5.1");
+            Check("reads the page URL",
+                release.PageUrl, "https://github.com/swyf-modding/Launcher/releases/tag/v1.5.1");
+
+            Throws("a reply with no tag is an error, not an empty release",
+                () => UpdateChecker.ParseReleaseJson("{\"html_url\": \"https://github.com/x\"}"));
+            Throws("a reply that is not JSON is an error",
+                () => UpdateChecker.ParseReleaseJson("rate limit exceeded"));
+        }
+
+        private static void UpdateIsOffered(string current, string latest)
+        {
+            Check("'" + current + "' is told about '" + latest + "'",
+                UpdateChecker.IsUpdateAvailable(current, latest), true);
+        }
+
+        private static void UpdateNotOffered(string current, string latest)
+        {
+            Check("'" + current + "' is not told about '" + latest + "'",
+                UpdateChecker.IsUpdateAvailable(current, latest), false);
         }
 
         private static void Section(string name)

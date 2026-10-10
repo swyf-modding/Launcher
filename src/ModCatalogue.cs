@@ -42,17 +42,32 @@ namespace ScamWYF.Launcher
     /// <summary>A mod this tool knows about, and can fetch.</summary>
     internal sealed class ModSource
     {
+        public string Owner { get; private set; }
         public string Repo { get; private set; }
         public string DisplayName { get; private set; }
         public string Summary { get; private set; }
         public ModFile[] Files { get; private set; }
 
-        public ModSource(string repo, string displayName, string summary, ModFile[] files)
+        public ModSource(string repo, string displayName, string summary, ModFile[] files,
+                         string owner = ModCatalogue.DefaultOwner)
         {
+            Owner = string.IsNullOrEmpty(owner) ? ModCatalogue.DefaultOwner : owner;
             Repo = repo;
             DisplayName = displayName;
             Summary = summary;
             Files = files;
+        }
+
+        /// <summary>owner/repo, which is what names a third-party entry's origin.</summary>
+        public string QualifiedName
+        {
+            get { return Owner + "/" + Repo; }
+        }
+
+        /// <summary>Whether this entry comes from outside the project's own organisation.</summary>
+        public bool IsThirdParty
+        {
+            get { return !string.Equals(Owner, ModCatalogue.DefaultOwner, StringComparison.OrdinalIgnoreCase); }
         }
     }
 
@@ -109,20 +124,31 @@ namespace ScamWYF.Launcher
     /// </summary>
     /// <remarks>
     /// A short list rather than a search, and that is the point. A list is reviewed: every entry names a
-    /// repository whose releases this project publishes, so what appears here is what someone chose to
-    /// put there. A search box over arbitrary mod sites would be a different tool with a different set of
-    /// risks, and nothing in this launcher should imply that a mod came from here just because it was
-    /// easy to fetch.
+    /// repository someone chose to put there. A search box over arbitrary mod sites would be a different
+    /// tool with a different set of risks, and nothing in this launcher should imply that a mod came from
+    /// here just because it was easy to fetch.
+    ///
+    /// The list itself is fetched live from the ModCatalogue repository rather than compiled in, so adding
+    /// a mod no longer needs a launcher release. The compiled-in list below remains as the offline
+    /// fallback: if the fetch fails, the tab shows what it has always shown and says so. Entries may name
+    /// repositories outside the project's own organisation; those are marked as third-party wherever they
+    /// appear, because unlike the list there is no shared review behind them.
     ///
     /// "Install from a URL" exists for the cases a list cannot cover, and it is deliberately the
     /// separate, louder path: the user types the address, so there is no curated list behind it.
     ///
-    /// The API is unauthenticated, which GitHub limits to 60 requests an hour per address. Three lookups
-    /// is well inside that; the error is reported as what it is rather than as a generic failure.
+    /// The API is unauthenticated, which GitHub limits to 60 requests an hour per address. One catalogue
+    /// fetch plus one lookup per mod is well inside that; the error is reported as what it is rather
+    /// than as a generic failure.
     /// </remarks>
     internal static class ModCatalogue
     {
-        private const string Owner = "swyf-modding";
+        internal const string DefaultOwner = "swyf-modding";
+
+        /// <summary>Where the live mod list lives. A branch, not a tag: catalogue edits reach users
+        /// without a launcher release, which is the point of fetching it instead of compiling it in.</summary>
+        internal const string CatalogueUrl =
+            "https://raw.githubusercontent.com/swyf-modding/ModCatalogue/main/mods.json";
 
         private static readonly ModFile LibraryFile =
             new ModFile("ScamWYF.Modding.Core.dll", ModFolder.Core, false);
@@ -154,17 +180,212 @@ namespace ScamWYF.Launcher
             new ModSource(
                 "mod-lib",
                 "Shared Library",
-                "The library both mods are built against. Installed on its own it does nothing; it is " +
+                "The library the mods are built against. Installed on its own it does nothing; it is " +
                 "here so the first mod you install brings it with it.",
                 new[] { LibraryFile })
         };
 
         public static IEnumerable<ModSource> Mods { get { return Known; } }
 
+        /// <summary>
+        /// The live mod list. Falls back to the compiled-in list when the fetch fails, so an offline
+        /// machine shows what it has always shown rather than an empty tab.
+        /// </summary>
+        /// <param name="usedFallback">True when the returned list is the built-in one, and why.</param>
+        public static List<ModSource> FetchSources(out string usedFallback)
+        {
+            usedFallback = null;
+
+            try
+            {
+                return FetchCatalogue();
+            }
+            catch (Exception ex)
+            {
+                usedFallback = ex.Message;
+                return new List<ModSource>(Known);
+            }
+        }
+
+        /// <summary>Fetch and validate the live mod list.</summary>
+        public static List<ModSource> FetchCatalogue()
+        {
+            return ParseCatalogue(Http.GetText(CatalogueUrl));
+        }
+
+        /// <summary>Read a mod list out of catalogue JSON.</summary>
+        /// <remarks>
+        /// Separate from the fetch so the shape can be tested without a network. Fail-closed: anything
+        /// unexpected rejects the whole file rather than skipping one entry, because a catalogue that
+        /// only half-parsed is how a typo silently unlists a mod. The caller falls back to the built-in
+        /// list and shows the message, so a rejection is visible rather than silent.
+        /// </remarks>
+        internal static List<ModSource> ParseCatalogue(string json)
+        {
+            object parsed;
+            try
+            {
+                parsed = new JavaScriptSerializer { MaxJsonLength = Http.MaxTextBytes }.DeserializeObject(json);
+            }
+            catch (ArgumentException ex)
+            {
+                throw new IOException("The mod list could not be read as JSON. " + ex.Message, ex);
+            }
+
+            var root = parsed as Dictionary<string, object>;
+            if (root == null) throw new IOException("The mod list was not in the expected shape");
+
+            object schemaValue;
+            if (!root.TryGetValue("schemaVersion", out schemaValue))
+            {
+                throw new IOException("The mod list names no schema version");
+            }
+
+            var schema = Number(root, "schemaVersion");
+            if (schema != 1)
+            {
+                throw new IOException("The mod list uses schema version " + schema + ", which this launcher " +
+                                      "does not understand. Update the launcher to read it");
+            }
+
+            object raw;
+            if (!root.TryGetValue("mods", out raw)) throw new IOException("The mod list names no mods");
+
+            var entries = raw as object[];
+            if (entries == null) throw new IOException("The mod list names no mods");
+            if (entries.Length == 0) throw new IOException("The mod list names no mods");
+            if (entries.Length > 64)
+            {
+                throw new IOException("The mod list names " + entries.Length + " mods, which is more than " +
+                                      "the 64 this launcher will consider");
+            }
+
+            var sources = new List<ModSource>();
+            for (var i = 0; i < entries.Length; i++)
+            {
+                sources.Add(ParseEntry(entries[i] as Dictionary<string, object>, i));
+            }
+
+            return sources;
+        }
+
+        /// <summary>One catalogue entry, checked field by field.</summary>
+        private static ModSource ParseEntry(Dictionary<string, object> entry, int index)
+        {
+            var where = "entry " + (index + 1);
+            if (entry == null) throw new IOException("The mod list's " + where + " is not an object");
+
+            object repoValue;
+            var repo = entry.TryGetValue("repo", out repoValue) && repoValue != null
+                ? repoValue.ToString().Trim() : null;
+            if (!IsAccountName(repo))
+            {
+                throw new IOException("The mod list's " + where + " names no repository");
+            }
+            where = "mod '" + repo + "'";
+
+            object ownerValue;
+            var owner = entry.TryGetValue("owner", out ownerValue) && ownerValue != null
+                ? ownerValue.ToString().Trim() : DefaultOwner;
+            if (!IsAccountName(owner))
+            {
+                throw new IOException("The mod list's " + where + " names no valid owner");
+            }
+
+            var displayName = Text(entry, "displayName");
+            if (string.IsNullOrWhiteSpace(displayName) || displayName.Trim().Length > 80)
+            {
+                throw new IOException("The mod list's " + where + " has no usable display name");
+            }
+
+            var summary = Text(entry, "summary");
+            if (string.IsNullOrWhiteSpace(summary) || summary.Trim().Length > 500)
+            {
+                throw new IOException("The mod list's " + where + " has no usable summary");
+            }
+
+            object filesValue;
+            if (!entry.TryGetValue("files", out filesValue)) throw new IOException("The mod list's " + where + " names no files");
+
+            var rawFiles = filesValue as object[];
+            if (rawFiles == null || rawFiles.Length == 0 || rawFiles.Length > 16)
+            {
+                throw new IOException("The mod list's " + where + " names no files");
+            }
+
+            var files = new List<ModFile>();
+            foreach (var rawFile in rawFiles)
+            {
+                files.Add(ParseFile(rawFile as Dictionary<string, object>, where));
+            }
+
+            return new ModSource(repo, displayName.Trim(), summary.Trim(), files.ToArray(), owner);
+        }
+
+        /// <summary>One file entry: a bare dll name and a known folder, nothing else.</summary>
+        /// <remarks>
+        /// Strict about the name because it becomes a file under the game folder: no separators, no
+        /// parent references, and a .dll suffix, so a catalogue entry can never route a download
+        /// somewhere the folders above did not intend.
+        /// </remarks>
+        private static ModFile ParseFile(Dictionary<string, object> file, string where)
+        {
+            if (file == null) throw new IOException("The mod list's " + where + " names a file that is not an object");
+
+            var name = Text(file, "fileName");
+            if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 100 ||
+                name.IndexOf('/') >= 0 || name.IndexOf('\\') >= 0 ||
+                name.Trim() == "." || name.Trim() == ".." ||
+                !name.Trim().EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new IOException("The mod list's " + where + " names a file this launcher will not install");
+            }
+
+            var folderText = Text(file, "folder");
+            ModFolder folder;
+            if (string.Equals(folderText, "plugins", StringComparison.OrdinalIgnoreCase))
+            {
+                folder = ModFolder.Plugins;
+            }
+            else if (string.Equals(folderText, "core", StringComparison.OrdinalIgnoreCase))
+            {
+                folder = ModFolder.Core;
+            }
+            else
+            {
+                throw new IOException("The mod list's " + where + " puts " + name.Trim() +
+                                      " somewhere other than plugins or core");
+            }
+
+            object flag;
+            if (!file.TryGetValue("expectsPluginAttribute", out flag) || !(flag is bool))
+            {
+                throw new IOException("The mod list's " + where + " does not say whether " +
+                                      name.Trim() + " is a plugin");
+            }
+
+            return new ModFile(name.Trim(), folder, (bool)flag);
+        }
+
+        /// <summary>A GitHub account or repository name: letters, digits, dot, dash, underscore.</summary>
+        internal static bool IsAccountName(string text)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length > 100) return false;
+
+            foreach (var c in text)
+            {
+                var ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                         c == '.' || c == '-' || c == '_';
+                if (!ok) return false;
+            }
+
+            return true;
+        }
+
         /// <summary>Ask GitHub for the latest release of one mod.</summary>
         public static ReleaseInfo FetchLatest(ModSource source)
         {
-            var url = "https://api.github.com/repos/" + Owner + "/" + source.Repo + "/releases/latest";
+            var url = "https://api.github.com/repos/" + source.Owner + "/" + source.Repo + "/releases/latest";
             var json = Http.GetText(url);
 
             object parsed;

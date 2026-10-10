@@ -306,6 +306,22 @@ namespace ScamWYF.Launcher
             var text = new StringBuilder();
 
             text.AppendLine(plan.Release.Source.DisplayName + "  " + plan.Release.TagName);
+
+            // Which repository the files come from. Named for every catalogue install, and loudest for
+            // a third-party one: unlike the project's own releases there is no shared review behind it.
+            // Skipped when the source names no real repository, which is the URL path - that dialog
+            // already names its host in its own words.
+            if (ModCatalogue.IsAccountName(plan.Release.Source.Repo) &&
+                ModCatalogue.IsAccountName(plan.Release.Source.Owner))
+            {
+                text.Append("From " + plan.Release.Source.QualifiedName + " on GitHub");
+                if (plan.Release.Source.IsThirdParty)
+                {
+                    text.Append(" - a third-party repository, not this project's own");
+                }
+                text.AppendLine(".");
+            }
+
             text.AppendLine();
 
             foreach (var step in plan.Steps)

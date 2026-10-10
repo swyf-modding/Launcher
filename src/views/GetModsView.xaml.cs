@@ -29,7 +29,20 @@ namespace ScamWYF.Launcher.Views
         }
 
         public ReleaseInfo Release { get; private set; }
-        public string Name { get { return Release.Source.DisplayName; } }
+
+        /// <summary>
+        /// The name with its owner when the mod comes from outside the project: a third-party entry
+        /// has no shared review behind it, so the list says whose repository it points at.
+        /// </summary>
+        public string Name
+        {
+            get
+            {
+                return Release.Source.IsThirdParty
+                    ? Release.Source.DisplayName + " (" + Release.Source.Owner + ")"
+                    : Release.Source.DisplayName;
+            }
+        }
         public string Tag { get { return Release.TagName; } }
         public string Size { get { return Http.Describe(Release.Package.Size); } }
         public string What { get { return Release.Source.Summary; } }
@@ -139,7 +152,15 @@ namespace ScamWYF.Launcher.Views
                 var found = new List<ReleaseInfo>();
                 var problems = new List<string>();
 
-                foreach (var source in ModCatalogue.Mods)
+                // The live list first; the built-in one when it cannot be reached, with the reason kept
+                // so the tab says which list it is showing rather than silently serving a stale one.
+                string fallback;
+                var sources = ModCatalogue.FetchSources(out fallback);
+                var listNote = fallback == null
+                    ? "live list"
+                    : "built-in list (the live one could not be read: " + fallback + ")";
+
+                foreach (var source in sources)
                 {
                     try
                     {
@@ -147,8 +168,9 @@ namespace ScamWYF.Launcher.Views
                     }
                     catch (Exception ex)
                     {
-                        // One unreachable repository must not hide the other two.
-                        problems.Add(source.DisplayName + ": " + ex.Message);
+                        // One unreachable repository must not hide the others. Named by owner and repo
+                        // rather than display name, so two entries with the same name stay tellable apart.
+                        problems.Add(source.QualifiedName + ": " + ex.Message);
                     }
                 }
 
@@ -161,10 +183,13 @@ namespace ScamWYF.Launcher.Views
                         _rows.Add(new ReleaseRow(release, DescribeInstalled(release.Source)));
                     }
 
-                    var report = problems.Count == 0
-                        ? _rows.Count + " mod(s) checked against GitHub."
-                        : _rows.Count + " checked, " + problems.Count + " could not be read. " +
-                          string.Join("  ", problems.ToArray());
+                    var report = _rows.Count + " mod(s) checked against GitHub, from the " + listNote + ".";
+
+                    if (problems.Count > 0)
+                    {
+                        report += " " + problems.Count + " could not be read. " +
+                                  string.Join("  ", problems.ToArray());
+                    }
 
                     // Passed to SetBusy rather than assigned separately, so the status line is told what
                     // actually happened. It used to keep saying "Checking GitHub..." after the answer had

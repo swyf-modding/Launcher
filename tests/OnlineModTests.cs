@@ -22,12 +22,43 @@ namespace ScamWYF.Launcher.Tests
         {
             Console.WriteLine("Live check against github.com. Requires network.");
 
+            CatalogueFetch();
             ListingWorks();
             DownloadVerifies();
 
             Console.WriteLine();
             Console.WriteLine(_passed + " passed, " + _failed + " failed");
             return _failed == 0 ? 0 : 1;
+        }
+
+        private static void CatalogueFetch()
+        {
+            Section("Live mod list");
+
+            System.Collections.Generic.List<ModSource> sources = null;
+            string error = null;
+
+            try
+            {
+                sources = ModCatalogue.FetchCatalogue();
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+            }
+
+            Check("the live list reads (" + Trim(error) + ")", sources != null, true);
+            if (sources == null) return;
+
+            Check("it names at least one mod", sources.Count > 0, true);
+
+            foreach (var source in sources)
+            {
+                Check("  " + source.QualifiedName + " has a summary",
+                    !string.IsNullOrWhiteSpace(source.Summary), true);
+                Check("  " + source.QualifiedName + " names at least one file",
+                    source.Files.Length > 0, true);
+            }
         }
 
         private static void ListingWorks()

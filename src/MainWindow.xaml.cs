@@ -39,6 +39,9 @@ namespace ScamWYF.Launcher
 
         private bool _shown;
 
+        private LauncherRelease _latestRelease;
+        private volatile bool _checkingUpdates;
+
         public MainWindow(string[] args)
         {
             InitializeComponent();
@@ -124,6 +127,8 @@ namespace ScamWYF.Launcher
 
             SetupPage.Reload();
             ModsPage.Reload();
+
+            CheckForLauncherUpdate(true);
         }
 
         /// <summary>
@@ -256,6 +261,126 @@ private void ShowTab(int index)
             // Background is what makes this a "catch up now" rather than a nested message loop - a nested
             // loop would let the user start a second operation, which is the thing being guarded against.
             Dispatcher.Invoke(DispatcherPriority.Background, new Action(delegate { }));
+        }
+
+        /// <summary>
+        /// Ask GitHub whether a newer launcher release exists.
+        /// </summary>
+        /// <remarks>
+        /// Off the UI thread, because it is a network round trip and the window has just opened - hanging
+        /// it there would read as a slow start. Deliberately outside the Busy flag: a version lookup must
+        /// not grey out the tabs, and two of them racing would only waste one request against the rate
+        /// limit. An automatic check that fails says nothing: no network on launch is ordinary, and a
+        /// modal about it would scold everyone who opens the tool offline. A manual check reports whatever
+        /// it found on the status line, because the button was pressed and an answer is owed.
+        /// </remarks>
+        public void CheckForLauncherUpdate(bool automatic)
+        {
+            if (_checkingUpdates) return;
+            _checkingUpdates = true;
+            CheckUpdatesButton.IsEnabled = false;
+
+            if (!automatic) Status("Checking GitHub for a newer launcher release...", true);
+
+            new Thread(delegate()
+            {
+                try
+                {
+                    var latest = UpdateChecker.FetchLatest();
+                    var current = UpdateChecker.CurrentVersion();
+                    var newer = UpdateChecker.IsUpdateAvailable(current, latest.TagName);
+
+                    OnUi(delegate()
+                    {
+                        _checkingUpdates = false;
+                        CheckUpdatesButton.IsEnabled = true;
+
+                        if (newer)
+                        {
+                            _latestRelease = latest;
+                            UpdateText.Text = "Launcher " + latest.TagName + " is available on GitHub " +
+                                              "(you have " + current + "). Download the zip and unpack it " +
+                                              "over this one - your game install is untouched.";
+                            UpdateBar.Visibility = Visibility.Visible;
+                            Status("Launcher " + latest.TagName + " is available - see the bar above.", true);
+                        }
+                        else if (!automatic)
+                        {
+                            UpdateBar.Visibility = Visibility.Collapsed;
+                            Status("You're up to date (" + current + ").", true);
+                        }
+                    });
+                }
+                catch (Exception ex)
+                {
+                    var message = ex.Message;
+                    OnUi(delegate()
+                    {
+                        _checkingUpdates = false;
+                        CheckUpdatesButton.IsEnabled = true;
+
+                        // Automatic and failed: stay quiet, so an offline launch looks like a launch.
+                        if (!automatic) Status("Could not check for updates: " + message, false);
+                    });
+                }
+            })
+            {
+                IsBackground = true
+            }.Start();
+        }
+
+        private void OnCheckUpdates(object sender, RoutedEventArgs e)
+        {
+            CheckForLauncherUpdate(false);
+        }
+
+        private void OnViewRelease(object sender, RoutedEventArgs e)
+        {
+            var release = _latestRelease;
+            if (release == null || string.IsNullOrWhiteSpace(release.PageUrl))
+            {
+                Status("There is no release page to open.", false);
+                return;
+            }
+
+            if (!Http.IsAcceptable(release.PageUrl))
+            {
+                Status("That release page is not an https URL, so it was not opened.", false);
+                return;
+            }
+
+            try
+            {
+                Process.Start(new ProcessStartInfo(release.PageUrl) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Status("Could not open the release page: " + ex.Message, false);
+            }
+        }
+
+        private void OnDismissUpdate(object sender, RoutedEventArgs e)
+        {
+            UpdateBar.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>Run work on the UI thread.</summary>
+        private void OnUi(Action action)
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                action();
+                return;
+            }
+
+            try
+            {
+                Dispatcher.BeginInvoke(action);
+            }
+            catch (Exception)
+            {
+                // The window closed while the check was in flight. There is nobody left to tell.
+            }
         }
 
         private void OnPlay(object sender, RoutedEventArgs e)
