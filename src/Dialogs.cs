@@ -38,6 +38,19 @@ namespace ScamWYF.Launcher
             return Show(title, message, severity, acceptText, "Cancel", defaultAccept: false);
         }
 
+        /// <summary>
+        /// Ask whether to do an optional thing, where declining moves on rather than aborting.
+        /// </summary>
+        /// <remarks>
+        /// "Cancel" would be the wrong word here: declining one setup step offers the next one, so the
+        /// button says Skip. Still defaults away from running, like every other confirmation.
+        /// </remarks>
+        public static bool ConfirmSkippable(string title, string message, string acceptText,
+                                            DialogSeverity severity = DialogSeverity.Question)
+        {
+            return Show(title, message, severity, acceptText, "Skip", defaultAccept: false);
+        }
+
         /// <summary>Say something that needs acknowledging.</summary>
         public static void Inform(string title, string message)
         {

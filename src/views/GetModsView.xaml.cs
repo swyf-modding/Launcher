@@ -321,14 +321,152 @@ namespace ScamWYF.Launcher.Views
             }
             catch (Exception ex)
             {
-                Failed(ex.Message);
-            }
-            finally
-            {
                 ModInstaller.Discard(folder);
+                Failed(ex.Message);
+                Host.RefreshModViews();
+                return;
             }
 
+            OfferPostInstall(plan, folder);
+        }
+
+        /// <summary>
+        /// Discard the download's working folder. It survives until every optional step is answered,
+        /// because the scripts run out of it - discarding it with the install would strand them.
+        /// </summary>
+        private void FinishInstall(string folder)
+        {
+            if (folder != null) ModInstaller.Discard(folder);
             Host.RefreshModViews();
+        }
+
+        /// <summary>
+        /// Offer each optional setup step in turn, after the files are installed.
+        /// </summary>
+        /// <remarks>
+        /// One prompt per step, each deniable on its own: a stream mod's ChatBridge setup can be skipped
+        /// while another step still runs, and denying everything leaves the installed files exactly as
+        /// they were. Nothing here runs without an explicit yes on its own prompt, and the prompt shows
+        /// the script before asking.
+        /// </remarks>
+        private void OfferPostInstall(InstallPlan plan, string folder)
+        {
+            OfferStep(plan, folder, 0);
+        }
+
+        private void OfferStep(InstallPlan plan, string folder, int index)
+        {
+            if (index >= plan.Scripts.Count)
+            {
+                FinishInstall(folder);
+                return;
+            }
+
+            var step = plan.Scripts[index];
+
+            if (!Dialogs.ConfirmSkippable("Run optional setup?", PromptFor(step), "Run",
+                                          DialogSeverity.Warning))
+            {
+                Status("skipped " + step.ScriptName + " - the installed files are unchanged");
+                OfferStep(plan, folder, index + 1);
+                return;
+            }
+
+            string running;
+            if (ModManager.GameRunning(out running))
+            {
+                // Re-checked per step rather than once per install: the game may have been started in
+                // between, and a setup script writing at a running game is refused the same way a file
+                // move is.
+                Host.Status("The game is running (" + running + "), so " + step.ScriptName +
+                            " was not run.", false);
+                OfferStep(plan, folder, index + 1);
+                return;
+            }
+
+            SetBusy(true, "Running " + step.ScriptName + "...");
+
+            var lines = new List<string>();
+            var gate = new object();
+
+            new Thread(delegate()
+            {
+                try
+                {
+                    SetupRunner.RunScript(step.ScriptPath, Host.Install.Path,
+                        line => { lock (gate) lines.Add(line); },
+                        exitCode => OnUi(delegate
+                        {
+                            List<string> snapshot;
+                            lock (gate) snapshot = new List<string>(lines);
+
+                            SetBusy(false, null);
+                            ReportScript(step, snapshot, exitCode);
+                            OfferStep(plan, folder, index + 1);
+                        }));
+                }
+                catch (Exception ex)
+                {
+                    var message = ex.Message;
+                    OnUi(delegate
+                    {
+                        SetBusy(false, null);
+                        ReportScript(step, new List<string> { "Could not run " + step.ScriptName +
+                                                             ": " + message }, -1);
+                        OfferStep(plan, folder, index + 1);
+                    });
+                }
+            })
+            {
+                IsBackground = true
+            }.Start();
+        }
+
+        /// <summary>What the prompt shows: what the step does, then the script itself.</summary>
+        private static string PromptFor(PostInstallStep step)
+        {
+            var text = new StringBuilder();
+
+            text.AppendLine(step.Description);
+            text.AppendLine();
+
+            var full = step.ScriptText ?? "";
+            var lineCount = full.Length == 0 ? 0 : full.Split('\n').Length;
+
+            const int maxChars = 2000;
+            var shown = full.Length > maxChars
+                ? full.Substring(0, maxChars) + Environment.NewLine + "... (truncated; " +
+                  full.Length + " characters in full)"
+                : full;
+
+            text.AppendLine("The script (" + step.ScriptName + ", " + lineCount + " lines) reads:");
+            text.AppendLine();
+            text.AppendLine(shown);
+            text.AppendLine();
+            text.AppendLine("It runs now, as you, with the game folder passed as -GameDir. " +
+                            "Skipping changes nothing already installed.");
+
+            return text.ToString();
+        }
+
+        /// <summary>What happened, as a dialog plus a status line.</summary>
+        private void ReportScript(PostInstallStep step, List<string> lines, int exitCode)
+        {
+            var tail = lines.Count <= 20 ? lines : lines.GetRange(lines.Count - 20, 20);
+            var output = tail.Count == 0
+                ? "It printed nothing."
+                : string.Join(Environment.NewLine, tail.ToArray());
+
+            if (exitCode == 0)
+            {
+                Status(step.ScriptName + " finished.");
+                Dialogs.Inform(step.ScriptName + " finished", output);
+                return;
+            }
+
+            Host.Status(step.ScriptName + " reported problems (exit " + exitCode + ").", false);
+            Dialogs.Error(step.ScriptName + " reported problems",
+                          "Exit code " + exitCode + "." + Environment.NewLine + Environment.NewLine + output);
         }
 
         private void InstallFromUrl()

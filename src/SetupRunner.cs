@@ -121,6 +121,46 @@ namespace ScamWYF.Launcher
             // Run from the repo, so its relative vendor\ paths resolve.
             info.WorkingDirectory = Path.GetDirectoryName(_setupScript);
 
+            RunProcess(info, "the setup script", onLine, onFinished);
+        }
+
+        /// <summary>
+        /// Run a mod's optional setup script after installing.
+        /// </summary>
+        /// <remarks>
+        /// The same process plumbing as setup, minus setup's arguments: the script gets the game folder
+        /// as -GameDir and runs with the download as its working directory, so relative paths in it
+        /// resolve to what was downloaded rather than to the game. Per-invocation -NoProfile and
+        /// -ExecutionPolicy Bypass, like setup: nothing about the machine's own settings is changed.
+        ///
+        /// This only runs what the caller already showed the user and got an explicit yes for. There is
+        /// no path from here back to prompting - by the time a script reaches this method, denying it is
+        /// no longer an option being offered.
+        /// </remarks>
+        public static void RunScript(string scriptPath, string gameDir, Action<string> onLine,
+                                     Action<int> onFinished)
+        {
+            var info = new ProcessStartInfo
+            {
+                FileName = PowerShellPath(),
+                Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + scriptPath +
+                            "\" -GameDir \"" + gameDir + "\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
+            };
+
+            info.WorkingDirectory = Path.GetDirectoryName(scriptPath);
+
+            RunProcess(info, Path.GetFileName(scriptPath), onLine, onFinished);
+        }
+
+        private static void RunProcess(ProcessStartInfo info, string what,
+                                       Action<string> onLine, Action<int> onFinished)
+        {
             try
             {
                 using (var process = new Process { StartInfo = info, EnableRaisingEvents = true })
@@ -145,7 +185,7 @@ namespace ScamWYF.Launcher
             }
             catch (Exception ex)
             {
-                if (onLine != null) onLine("Could not run the setup script: " + ex.Message);
+                if (onLine != null) onLine("Could not run " + what + ": " + ex.Message);
                 if (onFinished != null) onFinished(-1);
             }
         }

@@ -39,6 +39,47 @@ namespace ScamWYF.Launcher
         }
     }
 
+    /// <summary>
+    /// An optional setup step a mod offers after its files are installed.
+    /// </summary>
+    /// <remarks>
+    /// The canonical case is a companion the mod needs but cannot bundle: a stream mod's ChatBridge,
+    /// something that talks to Twitch and is configured per machine. That setup cannot run at install
+    /// time without asking, and it cannot run before the files are there - so it is offered afterwards,
+    /// one step at a time, each deniable on its own.
+    ///
+    /// Declared in the catalogue but shipped in the download: the script runs out of the unpacked zip,
+    /// never fetched from anywhere else. A catalogue entry naming a script the release does not contain
+    /// fails the install plan rather than going looking for it.
+    /// </remarks>
+    internal sealed class PostInstallStep
+    {
+        /// <summary>A bare .ps1 name, resolved against the unpacked download at plan time.</summary>
+        public string ScriptName { get; private set; }
+
+        /// <summary>What the prompt shows: what this does and what skipping costs. Shown verbatim.</summary>
+        public string Description { get; private set; }
+
+        /// <summary>Full path once the plan has verified it is in the download. Null before that.</summary>
+        public string ScriptPath { get; private set; }
+
+        /// <summary>The script's text, read at plan time so the prompt can show it. Null before that.</summary>
+        public string ScriptText { get; private set; }
+
+        public PostInstallStep(string scriptName, string description)
+            : this(scriptName, description, null, null)
+        {
+        }
+
+        public PostInstallStep(string scriptName, string description, string scriptPath, string scriptText)
+        {
+            ScriptName = scriptName;
+            Description = description;
+            ScriptPath = scriptPath;
+            ScriptText = scriptText;
+        }
+    }
+
     /// <summary>A mod this tool knows about, and can fetch.</summary>
     internal sealed class ModSource
     {
@@ -48,14 +89,18 @@ namespace ScamWYF.Launcher
         public string Summary { get; private set; }
         public ModFile[] Files { get; private set; }
 
+        /// <summary>Optional setup steps offered after installing, each deniable. Never null.</summary>
+        public PostInstallStep[] PostInstall { get; private set; }
+
         public ModSource(string repo, string displayName, string summary, ModFile[] files,
-                         string owner = ModCatalogue.DefaultOwner)
+                         string owner = ModCatalogue.DefaultOwner, PostInstallStep[] postInstall = null)
         {
             Owner = string.IsNullOrEmpty(owner) ? ModCatalogue.DefaultOwner : owner;
             Repo = repo;
             DisplayName = displayName;
             Summary = summary;
             Files = files;
+            PostInstall = postInstall ?? new PostInstallStep[0];
         }
 
         /// <summary>owner/repo, which is what names a third-party entry's origin.</summary>
@@ -319,7 +364,58 @@ namespace ScamWYF.Launcher
                 files.Add(ParseFile(rawFile as Dictionary<string, object>, where));
             }
 
-            return new ModSource(repo, displayName.Trim(), summary.Trim(), files.ToArray(), owner);
+            return new ModSource(repo, displayName.Trim(), summary.Trim(), files.ToArray(), owner,
+                                 ParsePostInstall(entry, where));
+        }
+
+        /// <summary>
+        /// A mod's optional setup steps. Absent means none; anything present must be exact.
+        /// </summary>
+        /// <remarks>
+        /// Capped at four: these are prompts a person answers one by one after installing, and a mod
+        /// with more setup steps than that has a setup problem no launcher dialog will fix.
+        /// </remarks>
+        private static PostInstallStep[] ParsePostInstall(Dictionary<string, object> entry, string where)
+        {
+            object raw;
+            if (!entry.TryGetValue("postInstall", out raw) || raw == null) return new PostInstallStep[0];
+
+            var rawSteps = raw as object[];
+            if (rawSteps == null || rawSteps.Length == 0 || rawSteps.Length > 4)
+            {
+                throw new IOException("The mod list's " + where + " names no usable setup steps");
+            }
+
+            var steps = new List<PostInstallStep>();
+            for (var i = 0; i < rawSteps.Length; i++)
+            {
+                steps.Add(ParsePostInstallStep(rawSteps[i] as Dictionary<string, object>, where, i + 1));
+            }
+
+            return steps.ToArray();
+        }
+
+        /// <summary>One setup step: which script in the download, and what the prompt says about it.</summary>
+        private static PostInstallStep ParsePostInstallStep(Dictionary<string, object> step, string where, int number)
+        {
+            var which = where + " setup step " + number;
+            if (step == null) throw new IOException("The mod list's " + which + " is not an object");
+
+            var script = Text(step, "script");
+            if (string.IsNullOrWhiteSpace(script) || script.Trim().Length > 100 ||
+                script.IndexOf('/') >= 0 || script.IndexOf('\\') >= 0 ||
+                !script.Trim().EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new IOException("The mod list's " + which + " names no script this launcher will run");
+            }
+
+            var description = Text(step, "description");
+            if (string.IsNullOrWhiteSpace(description) || description.Trim().Length > 280)
+            {
+                throw new IOException("The mod list's " + which + " says nothing usable about what it does");
+            }
+
+            return new PostInstallStep(script.Trim(), description.Trim());
         }
 
         /// <summary>One file entry: a bare dll name and a known folder, nothing else.</summary>

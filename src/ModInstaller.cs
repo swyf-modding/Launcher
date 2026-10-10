@@ -42,6 +42,9 @@ namespace ScamWYF.Launcher
         public ReleaseInfo Release;
         public List<InstallStep> Steps = new List<InstallStep>();
         public List<string> Warnings = new List<string>();
+
+        /// <summary>Optional setup steps, verified present in the download. Never null.</summary>
+        public List<PostInstallStep> Scripts = new List<PostInstallStep>();
     }
 
     /// <summary>
@@ -265,7 +268,56 @@ namespace ScamWYF.Launcher
 
             if (plan.Steps.Count == 0) throw new IOException("there was nothing in the download to install");
 
+            // The catalogue's optional setup steps, resolved against this download. Each script must be
+            // sitting in the unpacked folder under its bare name: a declared script the release does not
+            // contain fails here rather than being fetched from anywhere else, for the same reason a
+            // missing dll does - the catalogue and the release disagree, and going looking would turn a
+            // typo into a download from wherever the fixer pointed.
+            foreach (var declared in release.Source.PostInstall)
+            {
+                plan.Scripts.Add(ResolveScript(unpackedFolder, declared));
+            }
+
             return plan;
+        }
+
+        /// <summary>
+        /// A script's text is capped, because the prompt shows it before asking.
+        /// </summary>
+        internal const long MaxScriptBytes = 64L * 1024;
+
+        private static PostInstallStep ResolveScript(string unpackedFolder, PostInstallStep declared)
+        {
+            var path = Path.Combine(unpackedFolder, declared.ScriptName);
+
+            if (!File.Exists(path))
+            {
+                throw new IOException("the download did not contain " + declared.ScriptName + ", which the " +
+                                      "mod list promises as a setup step. " + DescribeAvailable(unpackedFolder));
+            }
+
+            if (new FileInfo(path).Length > MaxScriptBytes)
+            {
+                throw new IOException(declared.ScriptName + " is larger than any setup step should be, so it " +
+                                      "was refused rather than shown and run");
+            }
+
+            string text;
+            try
+            {
+                text = File.ReadAllText(path, Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                throw new IOException(declared.ScriptName + " could not be read: " + ex.Message);
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                throw new IOException(declared.ScriptName + " is empty, so there is nothing to run");
+            }
+
+            return new PostInstallStep(declared.ScriptName, declared.Description, path, text);
         }
 
         /// <summary>
@@ -343,6 +395,17 @@ namespace ScamWYF.Launcher
             text.AppendLine();
             text.AppendLine("Files come from " + plan.Release.Package.Name + " on GitHub, " +
                             Http.Describe(plan.Release.Package.Size) + ".");
+
+            // The optional steps, named before anything is agreed to: each is offered separately after
+            // installing, and each can be denied. Saying so here is what makes the later prompt expected
+            // rather than a surprise tacked onto an install.
+            foreach (var script in plan.Scripts)
+            {
+                text.AppendLine();
+                text.AppendLine("Optional setup: " + script.ScriptName);
+                text.AppendLine("  " + script.Description);
+                text.AppendLine("  Offered after installing; denying it installs nothing less.");
+            }
 
             if (plan.Release.Package.Sha256 != null)
             {

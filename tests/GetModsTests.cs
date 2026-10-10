@@ -34,6 +34,7 @@ namespace ScamWYF.Launcher.Tests
             FolderRouting();
             CatalogueIsWellFormed();
             LiveCatalogueRules();
+            PostInstallRules();
             BepInExVersionRules();
             LauncherUpdateRules();
             ModConfigFiles();
@@ -454,6 +455,132 @@ namespace ScamWYF.Launcher.Tests
         private static string CatalogueWithout(string field)
         {
             return SampleCatalogue.Replace(field + ", ", "").Replace(", " + field, "").Replace(field, "");
+        }
+
+        // ---------------------------------------------------------------- post-install steps
+
+        /// <summary>
+        /// Optional setup steps: catalogue parsing and plan-time verification, with no network.
+        /// </summary>
+        /// <remarks>
+        /// Weighted towards refusal, because these end in code execution: a declared script the
+        /// download does not contain, one too large to show, or one the catalogue describes badly
+        /// must stop the plan rather than reach a prompt. The prompt itself - deny by default, script
+        /// shown first - is UI and lives with the UI, untested here for the same reason the rest of
+        /// the views are.
+        /// </remarks>
+        private static void PostInstallRules()
+        {
+            Section("Post-install steps");
+
+            var sources = ModCatalogue.ParseCatalogue(SampleCatalogueWithSteps);
+            Check("reads one entry", sources.Count, 1);
+            Check("reads one step", sources[0].PostInstall.Length, 1);
+            Check("reads the script name", sources[0].PostInstall[0].ScriptName, "setup-chatbridge.ps1");
+            Check("reads the description", sources[0].PostInstall[0].Description, "Configures ChatBridge.");
+            Check("an entry without steps has none",
+                ModCatalogue.ParseCatalogue(SampleCatalogue)[0].PostInstall.Length, 0);
+
+            Throws("a step without a script is refused",
+                () => ModCatalogue.ParseCatalogue(StepsWith("{\"description\": \"Does things.\"}")));
+            Throws("a step without a description is refused",
+                () => ModCatalogue.ParseCatalogue(StepsWith("{\"script\": \"setup.ps1\"}")));
+            Throws("a non-ps1 step is refused",
+                () => ModCatalogue.ParseCatalogue(StepsWith(
+                    "{\"script\": \"setup.exe\", \"description\": \"Does things.\"}")));
+            Throws("a step with a separator is refused",
+                () => ModCatalogue.ParseCatalogue(StepsWith(
+                    "{\"script\": \"sub/setup.ps1\", \"description\": \"Does things.\"}")));
+            Throws("a step with a long description is refused",
+                () => ModCatalogue.ParseCatalogue(StepsWith(
+                    "{\"script\": \"setup.ps1\", \"description\": \"" + new string('x', 281) + "\"}")));
+            Throws("a fifth step is refused",
+                () => ModCatalogue.ParseCatalogue("{\"schemaVersion\": 1, \"mods\": [" +
+                    "{\"repo\": \"X\", \"displayName\": \"X\", \"summary\": \"Y\", " +
+                    "\"files\": [{\"fileName\": \"A.dll\", \"folder\": \"core\", \"expectsPluginAttribute\": false}], " +
+                    "\"postInstall\": [" +
+                    Step(1) + ", " + Step(2) + ", " + Step(3) + ", " + Step(4) + ", " + Step(5) + "]}]}"));
+
+            Section("Post-install planning");
+
+            var folder = Temp("postinstall");
+            try
+            {
+                Directory.CreateDirectory(folder);
+
+                // A real assembly standing in for the shared library, so the plan itself succeeds and
+                // the assertions are about the script rather than about the dll.
+                File.Copy(typeof(ModManager).Assembly.Location,
+                          Path.Combine(folder, "ScamWYF.Modding.Core.dll"));
+                File.WriteAllText(Path.Combine(folder, "setup-chatbridge.ps1"),
+                                  "Write-Output \"bridged\"");
+
+                var source = StepSource();
+                var release = new ReleaseInfo(source, "v1", null,
+                    new ReleaseAsset("x.zip", 0, "https://x/y.zip", null));
+                var install = GameInstall.Resolve(folder);
+
+                var plan = ModInstaller.Plan(release, folder, install);
+                Check("the plan carries the step", plan.Scripts.Count, 1);
+                Check("the step points into the download",
+                    plan.Scripts[0].ScriptPath, Path.Combine(folder, "setup-chatbridge.ps1"));
+                Check("the step carries the script's text",
+                    plan.Scripts[0].ScriptText.Contains("bridged"), true);
+                Check("the description names the step",
+                    ModInstaller.Describe(plan).Contains("setup-chatbridge.ps1"), true);
+                Check("the description says it is optional",
+                    ModInstaller.Describe(plan).Contains("Optional setup"), true);
+
+                File.Delete(Path.Combine(folder, "setup-chatbridge.ps1"));
+                Throws("a declared script the download lacks fails the plan",
+                    () => ModInstaller.Plan(release, folder, install));
+
+                File.WriteAllText(Path.Combine(folder, "setup-chatbridge.ps1"), "");
+                Throws("an empty script fails the plan",
+                    () => ModInstaller.Plan(release, folder, install));
+
+                using (var oversized = new FileStream(Path.Combine(folder, "setup-chatbridge.ps1"),
+                                                      FileMode.Create, FileAccess.Write))
+                {
+                    oversized.SetLength(ModInstaller.MaxScriptBytes + 1);
+                }
+                Throws("a script too large to show fails the plan",
+                    () => ModInstaller.Plan(release, folder, install));
+            }
+            finally
+            {
+                ModInstaller.Discard(folder);
+            }
+        }
+
+        /// <summary>A catalogue with one entry carrying one setup step.</summary>
+        private const string SampleCatalogueWithSteps =
+            "{\"schemaVersion\": 1, \"mods\": [" +
+            "{\"repo\": \"Stream-Mod\", \"displayName\": \"Stream Mod\", \"summary\": \"Streams.\", " +
+            "\"files\": [{\"fileName\": \"ScamWYF.Modding.Core.dll\", \"folder\": \"core\", " +
+            "\"expectsPluginAttribute\": false}], " +
+            "\"postInstall\": [{\"script\": \"setup-chatbridge.ps1\", " +
+            "\"description\": \"Configures ChatBridge.\"}]}]}";
+
+        /// <summary>The step catalogue with its single step replaced.</summary>
+        private static string StepsWith(string step)
+        {
+            return SampleCatalogueWithSteps.Replace(
+                "{\"script\": \"setup-chatbridge.ps1\", \"description\": \"Configures ChatBridge.\"}", step);
+        }
+
+        private static string Step(int n)
+        {
+            return "{\"script\": \"step" + n + ".ps1\", \"description\": \"Step " + n + ".\"}";
+        }
+
+        /// <summary>The catalogue entry the planning tests install from.</summary>
+        private static ModSource StepSource()
+        {
+            return new ModSource("Stream-Mod", "Stream Mod", "Streams.",
+                new[] { new ModFile("ScamWYF.Modding.Core.dll", ModFolder.Core, false) },
+                "swyf-modding",
+                new[] { new PostInstallStep("setup-chatbridge.ps1", "Configures ChatBridge.") });
         }
 
         // ---------------------------------------------------------------- helpers

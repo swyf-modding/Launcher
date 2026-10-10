@@ -441,6 +441,13 @@ limited — the tab falls back to the list compiled into the launcher and says s
 Entries may point at repositories outside `swyf-modding`; those are marked with their owner in the list
 and named again in the install confirmation, because there is no shared review behind them.
 
+**Optional setup steps.** Some mods need something the download cannot do by itself — a stream mod's
+ChatBridge, which talks to Twitch and is configured per machine. A catalogue entry can name up to four
+`postInstall` scripts for that, shipped inside the release zip. Each is offered separately *after* the
+files are installed, with the script's own text shown first, and each can be denied: declining changes
+nothing already installed. A script the release does not contain fails the install rather than being
+fetched from anywhere else, and nothing ever runs without an explicit yes.
+
 **From a URL.** For anything not on the list. Paste an `https` link to a `.dll` or a `.zip`. The host is
 named in the confirmation, because unlike the list there is nothing curated behind it. A `.zip` has each
 dll placed by whether it carries a `[BepInPlugin]`: with one goes to `plugins`, without one goes to
