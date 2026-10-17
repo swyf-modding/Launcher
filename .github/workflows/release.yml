@@ -26,7 +26,7 @@ env:
   #
   # Bump this when a Setup release should reach users. ci.yml pins the same value, so a bump is caught
   # by a normal push rather than being discovered in a release.
-  SETUP_REF: v1.0.0
+  SETUP_REF: v1.0.1
 
 on:
   push:

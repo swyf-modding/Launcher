@@ -16,7 +16,7 @@ env:
   # reason release.yml builds a tagged commit: a release has to be reproducible, and "whatever Setup's
   # branch pointed at this morning" is not that. Bump it when a Setup release should reach users, and
   # the commit it resolved to is recorded in bin\Setup\SETUP-VERSION.txt by every run that builds.
-  SETUP_REF: v1.0.0
+  SETUP_REF: v1.0.1
 
 on:
   push:
