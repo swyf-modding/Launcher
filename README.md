@@ -4,7 +4,7 @@
 
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![version](https://img.shields.io/github/v/release/swyf-modding/Launcher?label=version)
-![game build](https://img.shields.io/badge/game-v82--playtest-blue)
+![game build](https://img.shields.io/badge/game-0.1.71--swyf-blue)
 ![framework](https://img.shields.io/badge/.NET%20Framework-4.8-blue)
 
 *Built with:*
@@ -306,7 +306,7 @@ No game DLL belongs in this repository or in a GitHub release.
 
 | Component | Verified Version |
 |---|---|
-| Scam With Your Friends | `v82-playtest` |
+| Scam With Your Friends | `0.1.71-swyf` |
 | Unity | `6000.3.10f1` |
 | BepInEx | `5.4.23.5`, Mono preloader |
 | Target framework | .NET Framework 4.8 (WPF) |

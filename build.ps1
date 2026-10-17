@@ -112,10 +112,16 @@ function Resolve-Cecil {
     $candidates = @()
     if ($game) { $candidates += (Join-Path $game 'BepInEx\core\Mono.Cecil.dll') }
 
-    foreach ($root in @(
+    # Only the full release counts, in every Steam library, so a leftover Playtest on C: does not
+    # shadow the release on another drive.
+    $roots = @(
         "${env:ProgramFiles(x86)}\Steam\steamapps\common",
-        "${env:ProgramFiles}\Steam\steamapps\common")) {
-        foreach ($name in @('Scam With Your Friends', 'Scam With Your Friends Playtest')) {
+        "${env:ProgramFiles}\Steam\steamapps\common",
+        "${env:LOCALAPPDATA}\Steam\steamapps\common",
+        'C:\Program Files (x86)\Steam\steamapps\common',
+        'D:\SteamLibrary\steamapps\common')
+    foreach ($name in @('Scam With Your Friends')) {
+        foreach ($root in $roots) {
             $candidates += (Join-Path $root "$name\BepInEx\core\Mono.Cecil.dll")
         }
     }

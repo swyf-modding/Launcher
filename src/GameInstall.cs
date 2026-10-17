@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace ScamWYF.Launcher
 {
@@ -139,8 +140,8 @@ namespace ScamWYF.Launcher
         /// <remarks>
         /// Explicit path first, then the environment variable, then the usual Steam places. The
         /// environment variable is what an automated build wants: a runner has no Steam, so nothing
-        /// else would resolve. Candidate names differ because the game moved between Playtest and
-        /// release, and the folder is what identifies the install, not the executable.
+        /// else would resolve. Only the full release is considered; a leftover Playtest install is
+        /// ignored, and the folder name is what identifies the install, not the executable.
         ///
         /// Unlike the setup scripts this does not throw when nothing is found. The app's job is to
         /// show the user their game is not where it was expected, which a stack trace cannot do.
@@ -174,23 +175,71 @@ namespace ScamWYF.Launcher
 
         private static IEnumerable<string> SteamCandidates()
         {
-            var names = new[] { "Scam With Your Friends", "Scam With Your Friends Playtest" };
-            var roots = new[]
+            var names = new[] { "Scam With Your Friends" };
+
+            // Only the full release counts, in every library. The two versions install under different
+            // folder names, so ordering by name - rather than by whichever library Steam happens to
+            // list first - is what keeps a leftover Playtest from winning over the release.
+            var all = new List<string>();
+            foreach (var name in names)
             {
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86) + "\\Steam\\steamapps\\common",
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) + "\\Steam\\steamapps\\common",
-                Environment.GetEnvironmentVariable("LOCALAPPDATA") + "\\Steam\\steamapps\\common",
-                "C:\\Program Files (x86)\\Steam\\steamapps\\common",
-                "D:\\SteamLibrary\\steamapps\\common"
+                foreach (var root in SteamLibraries()) all.Add(System.IO.Path.Combine(root, name));
+            }
+            return all;
+        }
+
+        /// <summary>
+        /// Every Steam library's 'common' folder: the default install first, then the paths named in
+        /// its libraryfolders.vdf.
+        /// </summary>
+        /// <remarks>
+        /// Read rather than hardcoded: a game is installed to a library, not necessarily the one Steam
+        /// itself lives in, and the drive letter is not something to guess. The fixed entries at the
+        /// end are only for the machine where the default install is somewhere unusual.
+        /// </remarks>
+        private static IEnumerable<string> SteamLibraries()
+        {
+            var roots = new List<string>();
+            var steams = new[]
+            {
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Steam"),
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Steam"),
+                System.IO.Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? "", "Steam")
             };
 
-            var all = new List<string>();
+            foreach (var steam in steams)
+            {
+                if (string.IsNullOrWhiteSpace(steam) || !Directory.Exists(steam)) continue;
+
+                roots.Add(System.IO.Path.Combine(steam, "steamapps\\common"));
+
+                var vdf = System.IO.Path.Combine(steam, "steamapps\\libraryfolders.vdf");
+                if (!File.Exists(vdf)) continue;
+                try
+                {
+                    var text = File.ReadAllText(vdf);
+                    foreach (Match match in Regex.Matches(text, "\"path\"\\s+\"([^\"]+)\""))
+                    {
+                        var library = match.Groups[1].Value.Replace("\\\\", "\\");
+                        roots.Add(System.IO.Path.Combine(library, "steamapps\\common"));
+                    }
+                }
+                catch (Exception)
+                {
+                    // A VDF that cannot be read is not worth failing over; the fixed roots are still tried.
+                }
+            }
+
+            roots.Add("C:\\Program Files (x86)\\Steam\\steamapps\\common");
+            roots.Add("D:\\SteamLibrary\\steamapps\\common");
+
+            var unique = new List<string>();
             foreach (var root in roots)
             {
                 if (string.IsNullOrWhiteSpace(root)) continue;
-                foreach (var name in names) all.Add(System.IO.Path.Combine(root, name));
+                if (!unique.Contains(root)) unique.Add(root);
             }
-            return all;
+            return unique;
         }
 
         private static string FirstNonEmpty(IEnumerable<string> candidates)

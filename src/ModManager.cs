@@ -160,14 +160,11 @@ namespace ScamWYF.Launcher
         /// </summary>
         internal static bool GameRunning(out string name)
         {
-            foreach (var candidate in new[] { "Scam With Your Friends", "Scam With Your Friends Playtest" })
+            var found = SafeProcesses("Scam With Your Friends");
+            if (found.Count > 0)
             {
-                var found = SafeProcesses(candidate);
-                if (found.Count > 0)
-                {
-                    name = found[0];
-                    return true;
-                }
+                name = found[0];
+                return true;
             }
 
             name = null;
