@@ -441,6 +441,15 @@ limited — the tab falls back to the list compiled into the launcher and says s
 Entries may point at repositories outside `swyf-modding`; those are marked with their owner in the list
 and named again in the install confirmation, because there is no shared review behind them.
 
+**HostBoss (third-party).** [ProProgramer123/HostBoss](https://github.com/ProProgramer123/HostBoss)
+provides a BepInEx plugin for host-controlled boss presentations, slide controls, quotas, and separate
+quote/recording playback. Install the `HostBoss-Plugin-1.5.0.zip` release, which contains
+`ScamWYF.HostBoss.dll` for `plugins` and needs no separate shared library or post-install script.
+The legacy `HostBoss Patcher.exe` distribution modifies game assemblies and is not the launcher plugin.
+Close the game and choose **Remove / Normal Play** in that patcher before switching; the plugin refuses
+mixed installations. Configure BepInEx with this launcher's Setup tab, and restart after changing mods.
+The plugin is experimental; its installation checks do not establish live multiplayer compatibility.
+
 **Optional setup steps.** Some mods need something the download cannot do by itself — a stream mod's
 ChatBridge, which talks to Twitch and is configured per machine. A catalogue entry can name up to four
 `postInstall` scripts for that, shipped inside the release zip. Each is offered separately *after* the
