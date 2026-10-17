@@ -212,6 +212,14 @@ namespace ScamWYF.Launcher
                 }),
 
             new ModSource(
+                "HostBoss",
+                "HostBoss",
+                "Lets the lobby host control the boss presentation, slides, quota, quotes and recordings. " +
+                "Use the BepInEx plugin release; remove legacy HostBoss disk patches before switching.",
+                new[] { new ModFile("ScamWYF.HostBoss.dll", ModFolder.Plugins, true) },
+                "ProProgramer123"),
+
+            new ModSource(
                 "Mod-Handler",
                 "Mod Handler",
                 "Adds a Plugins tab to the in-game menu (F1), listing every installed plugin with a " +
