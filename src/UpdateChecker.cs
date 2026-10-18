@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
-using System.Web.Script.Serialization;
+using System.Text.Json;
 
 namespace ScamWYF.Launcher
 {
@@ -75,31 +75,39 @@ namespace ScamWYF.Launcher
         /// </remarks>
         internal static LauncherRelease ParseReleaseJson(string json)
         {
-            object parsed;
+            JsonDocument document;
             try
             {
-                parsed = new JavaScriptSerializer { MaxJsonLength = Http.MaxTextBytes }.DeserializeObject(json);
+                document = JsonDocument.Parse(json);
             }
-            catch (ArgumentException ex)
+            catch (JsonException ex)
             {
                 throw new IOException("GitHub's reply could not be read as JSON, which usually means a " +
                                       "rate limit page rather than a release. " + ex.Message, ex);
             }
 
-            var root = parsed as Dictionary<string, object>;
-            if (root == null) throw new IOException("GitHub's reply was not in the expected shape");
-
-            object tag;
-            if (!root.TryGetValue("tag_name", out tag) || tag == null || string.IsNullOrWhiteSpace(tag.ToString()))
+            using (document)
             {
-                throw new IOException("GitHub's reply named no release version");
+                var root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    throw new IOException("GitHub's reply was not in the expected shape");
+                }
+
+                if (!root.TryGetProperty("tag_name", out var tag) || tag.ValueKind != JsonValueKind.String ||
+                    string.IsNullOrWhiteSpace(tag.GetString()))
+                {
+                    throw new IOException("GitHub's reply named no release version");
+                }
+
+                string pageUrl = null;
+                if (root.TryGetProperty("html_url", out var page) && page.ValueKind == JsonValueKind.String)
+                {
+                    pageUrl = page.GetString();
+                }
+
+                return new LauncherRelease(tag.GetString().Trim(), pageUrl);
             }
-
-            object page;
-            string pageUrl = null;
-            if (root.TryGetValue("html_url", out page) && page != null) pageUrl = page.ToString();
-
-            return new LauncherRelease(tag.ToString().Trim(), pageUrl);
         }
 
         /// <summary>Whether the published tag is newer than this build.</summary>

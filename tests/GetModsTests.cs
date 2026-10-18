@@ -5,8 +5,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Text;
-using System.Web.Script.Serialization;
-using Mono.Cecil;
+using ScamWYF.Setup;
 
 namespace ScamWYF.Launcher.Tests
 {
@@ -313,15 +312,17 @@ namespace ScamWYF.Launcher.Tests
         {
             Section("Folder routing");
 
-            var install = GameInstall.Resolve(@"C:\Games\SWYF");
+            // An ordinary folder, built with Path.Combine so the test means the same thing on Linux.
+            var root = Path.Combine(Path.GetTempPath(), "SWYF");
+            var install = GameInstall.Resolve(root);
 
             Check("a mod goes to plugins",
                 ModCatalogue.FolderFor(install, ModFolder.Plugins),
-                @"C:\Games\SWYF\BepInEx\plugins");
+                Path.Combine(root, "BepInEx", "plugins"));
 
             Check("the library goes to core",
                 ModCatalogue.FolderFor(install, ModFolder.Core),
-                @"C:\Games\SWYF\BepInEx\core");
+                Path.Combine(root, "BepInEx", "core"));
         }
 
         // ---------------------------------------------------------------- catalogue
@@ -840,10 +841,11 @@ namespace ScamWYF.Launcher.Tests
                 Throws("a missing config file is an error, not an empty config",
                         delegate { ModConfigFile.Load(Path.Combine(dir, "nope.cfg")); });
 
+                var configFolder = Path.Combine(dir, "config");
                 Check("a config path is the GUID under the config folder",
-                      ModConfigFile.PathFor(@"C:\BepInEx\config", "com.example.test"),
-                      @"C:\BepInEx\config\com.example.test.cfg");
-                Check("no GUID means no config path", ModConfigFile.PathFor(@"C:\config", null), null);
+                      ModConfigFile.PathFor(configFolder, "com.example.test"),
+                      Path.Combine(configFolder, "com.example.test.cfg"));
+                Check("no GUID means no config path", ModConfigFile.PathFor(configFolder, null), null);
             }
             finally
             {

@@ -6,26 +6,21 @@ name: release
 # automated: a hosted runner builds it, and the tag is the version. Pushing v1.2.3 produces a release
 # whose binaries report 1.2.3 and name the commit they came from.
 #
+# What it publishes is the output of build.sh: one self-contained file per platform. There is no Setup
+# folder beside the exe any more - the setup runs in-process through ScamWYF.Setup.Core, and the corlib
+# and Doorstop it seeds are embedded in the executable - so the release is exactly two files.
+#
 # It rebuilds rather than reusing the artefact from ci.yml, on purpose. Artefacts expire after 90 days
 # and tags do not, so a release driven from an artefact would one day silently have nothing to publish.
 # The build is deterministic, so the bytes are the same either way.
-#
-# It also checks out Setup, because the release ships Setup's scripts: the Setup tab runs them, and
-# they carry the vendored Doorstop and the unstripped corlib. A user downloads one zip and the tab
-# works, with no second repository to clone.
 #
 # The mods cannot use this workflow: they compile against the game's own assemblies, so their build
 # needs a self-hosted runner with the game installed.
 
 env:
-  # The Setup tag bundled into the published zip. Pinned to a tag rather than Setup's main, because the
-  # whole point of building from a tag here is reproducibility, and a moving branch is the opposite of
-  # that. The resolved commit lands in bin\Setup\SETUP-VERSION.txt and so travels inside the release:
-  # anyone holding a given zip can say exactly which Setup it came with, and two Launcher releases built
-  # from the same SETUP_REF ship the same Setup.
-  #
-  # Bump this when a Setup release should reach users. ci.yml pins the same value, so a bump is caught
-  # by a normal push rather than being discovered in a release.
+  # The Setup commit the launcher is compiled against. A tag, not a branch: the point of building from a
+  # tag here is reproducibility, and a moving branch is the opposite of that. ci.yml pins the same value,
+  # so a bump is exercised by a normal push before any release depends on it.
   SETUP_REF: v1.0.1
 
 on:
@@ -38,168 +33,97 @@ permissions:
 jobs:
   release:
     name: Build and publish
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
-      # fetch-depth 0 for the tags. A shallow clone has no tag refs, and without them build.ps1 falls
-      # back to 0.0.0+untagged and stamps a released binary with a version nobody can trace.
-      - uses: actions/checkout@v4
+      # fetch-depth 0 for the tags. A shallow clone has no tag refs, and without them the version stamp
+      # falls back to 0.0.0+untagged and stamps a released binary with a version nobody can trace.
+      - name: Check out Launcher
+        uses: actions/checkout@v4
         with:
+          path: Launcher
           fetch-depth: 0
 
-      # Not a submodule and not vendored: a second plain checkout, handed to build.ps1 by path. A
-      # submodule would put Setup's 12 MB of vendored binaries into every clone of this repository and
-      # into this one's history, which is the cost the sibling checkout exists to avoid.
+      # Not a submodule and not vendored: a second plain checkout, compiled against by the project
+      # reference. A submodule would put Setup's 12 MB of vendored binaries into every clone of this
+      # repository and into its history, which is the cost the sibling checkout exists to avoid.
       - name: Check out Setup
         uses: actions/checkout@v4
         with:
           repository: swyf-modding/Setup
           ref: ${{ env.SETUP_REF }}
-          path: setup-src
+          path: Setup
 
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.x'
 
       - name: Confirm the tag and the commit agree
-        shell: pwsh
+        working-directory: Launcher
         run: |
-          $tag = $env:GITHUB_REF_NAME
-          $describe = (& git describe --tags --dirty --always).Trim()
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          describe="$(git describe --tags --dirty --always)"
+          if [ "$describe" != "$tag" ]; then
+            echo "HEAD describes as '$describe', not '$tag'. The tag is not on this commit." >&2
+            exit 1
+          fi
+          case "$describe" in
+            *-dirty)
+              echo "The working tree is dirty. A release must be built from a committed tree." >&2
+              exit 1 ;;
+          esac
+          echo "  $tag -> $describe"
 
-          if ($describe -ne $tag) {
-            throw "HEAD describes as '$describe', not '$tag'. The tag is not on this commit."
-          }
-          if ($describe -like '*-dirty') {
-            throw "The working tree is dirty. A release must be built from a committed tree."
-          }
-          Write-Host "  $tag -> $describe"
-
-      - name: Build
-        shell: pwsh
-        run: .\build.ps1 -SetupPath .\setup-src
+      - name: Build and publish both platforms
+        working-directory: Launcher
+        run: ./build.sh
 
       # Cheap, offline, and the kind of thing that should never be discovered during a release. The
       # install path is the only part of this tool that downloads and writes code, so its defences are
       # worth checking on the exact commit being published rather than on whatever was last pushed.
-      - name: Run the Get mods tests
-        shell: pwsh
-        run: .\tools\test-getmods.ps1
+      - name: Run the offline tests
+        working-directory: Launcher
+        run: ./tools/test-getmods.sh
 
-      # Stamping the version is the whole point of building from a tag, so it is checked rather than
-      # assumed. A binary whose version does not match its tag is worse than no release.
-      #
-      # Compared against both fields, because they deliberately differ on a prerelease tag: v1.2.3-rc1
-      # stamps FileVersion 1.2.3, since the CLR rejects a prerelease there, and carries the "rc1" in
-      # ProductVersion. Checking FileVersion against the whole tag would fail every prerelease.
-      - name: Confirm the binary reports the tag's version
-        shell: pwsh
+      # Stamping the version is the whole point of building from a tag, and build.sh reads it from
+      # `git describe`, whose output the first step already asserted equals the tag. What this step checks
+      # is what build.sh cannot check about itself: that it produced the files, and that they are
+      # self-contained - the embedded setup payload makes each one tens of megabytes, and a stub would
+      # not.
+      - name: Confirm the published files are complete
+        working-directory: Launcher
         run: |
-          $tag = $env:GITHUB_REF_NAME              # v1.2.3, or v1.2.3-rc1
-          $bare = $tag.TrimStart('v')              # 1.2.3, or 1.2.3-rc1
-          $numeric = ($bare -split '-')[0]         # 1.2.3 either way
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
 
-          $exe = '.\bin\ScamWYF.Launcher.exe'
-          if (-not (Test-Path $exe)) { throw "no exe at $exe" }
-          if (-not (Test-Path '.\bin\Mono.Cecil.dll')) { throw 'Mono.Cecil was not copied next to the exe' }
+          for file in dist/linux-x64/ScamWYF.Launcher dist/win-x64/ScamWYF.Launcher.exe; do
+            [ -f "$file" ] || { echo "missing $file" >&2; exit 1; }
+            size=$(stat -c%s "$file")
+            if [ "$size" -lt 20000000 ]; then
+              echo "$file is only $size bytes - the embedded payload looks absent" >&2
+              exit 1
+            fi
+            echo "  $file: $size bytes"
+          done
 
-          # Stamped at build time from the Setup tag, and it has to be there. A release whose Setup
-          # folder is empty produces a launcher that downloads, starts, and then offers a disabled
-          # Setup tab with no explanation - the exact experience this workflow exists to end.
-          if (-not (Test-Path -LiteralPath '.\bin\Setup\setup.ps1')) {
-              throw 'bin\Setup\setup.ps1 is missing - the release would ship a dead Setup tab'
-          }
-          $setupStamp = (Get-Content -LiteralPath '.\bin\Setup\SETUP-VERSION.txt' |
-                         Where-Object { $_.Trim() } | Select-Object -First 1)
-          Write-Host "  bundled:   $setupStamp"
-
-          $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $exe))
-          Write-Host "  AssemblyVersion: $($info.FileVersion)"
-          Write-Host "  ProductVersion: $($info.ProductVersion)"
-
-          if ($info.FileVersion -ne $numeric) {
-              throw "The binary's numeric version is $($info.FileVersion), but the tag says $numeric."
-          }
-          if ($info.ProductVersion -notlike "$bare+*") {
-              throw "The binary's full version is '$($info.ProductVersion)', which does not name $bare and a commit."
-          }
-
-          # Both versions, in the job summary, so the pairing of a Launcher release to a Setup commit
-          # is recorded by the run rather than only inside the zip. Someone asking "which scripts did
-          # v1.6.0 ship" should not have to download it to find out.
-          #
-          # Built as a string rather than a here-string because a here-string's terminator has to sit at
-          # the start of a line, and everything in a run: block is indented.
-          @(
-              '| Component | Version |'
-              '|---|---|'
-              "| Launcher | ``$($info.ProductVersion)`` |"
-              "| Setup | ``$setupStamp`` (ref ``$env:SETUP_REF``) |"
-          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
-
-      - name: Package
-        shell: pwsh
-        run: |
-          # Three things: the exe, the Cecil it reads plugin metadata with, and the Setup folder the
-          # Setup tab runs. Shipping the exe without the Cecil gives an exe that dies on startup with a
-          # FileNotFoundException; shipping it without Setup gives a launcher that starts and cannot set
-          # up a game. Neither failure says which file was missing.
-          #
-          # Named explicitly rather than zipping bin\*. A wildcard picks up whatever else happens to be
-          # in there - which is how a test binary got into a published zip once - and a release should be
-          # decided by this list, not by the state of a build folder.
-          $expected = @('ScamWYF.Launcher.exe', 'Mono.Cecil.dll', 'Setup')
-
-          foreach ($name in $expected) {
-              $path = Join-Path 'bin' $name
-              if (-not (Test-Path $path)) { throw "not in bin\: $name" }
-          }
-
-          # A pdb is tolerated but never packaged: Release sets DebugType=none, so there should not be
-          # one, but a Debug build pointed at bin\ would leave one and that is a build setting rather
-          # than a mistake worth failing a release over.
-          #
-          # Everything under bin\Setup is allowed, because build.ps1 decides that list by name from the
-          # Setup manifest and has already verified each file is present and non-empty. Re-deriving the
-          # whole set here would be a second copy of that list that could disagree with the first - which
-          # is the same mistake the allowlist below exists to prevent. What is checked instead is the
-          # thing that actually matters: that the folder is not empty, and that nothing inside it is.
-          $allowed = @('ScamWYF.Launcher.exe', 'Mono.Cecil.dll', 'ScamWYF.Launcher.pdb')
-
-          $unexpected = Get-ChildItem bin -Recurse -File |
-              Where-Object {
-                  $relative = $_.FullName.Substring((Resolve-Path 'bin').Path.Length).TrimStart([char[]]'\/')
-                  $top = ($relative -split '\\')[0]
-                  ($allowed -notcontains $relative) -and ($top -ne 'Setup')
-              } |
-              ForEach-Object { $_.FullName }
-
-          if ($unexpected) {
-              throw "bin\ holds files this release does not intend to publish: $($unexpected -join ', ')"
-          }
-
-          $setupFiles = @(Get-ChildItem 'bin\Setup' -Recurse -File)
-          if (-not $setupFiles.Count) { throw 'bin\Setup is empty - the release would ship a dead Setup tab' }
-          $empty = $setupFiles | Where-Object { $_.Length -eq 0 }
-          if ($empty) {
-              throw "zero-length files in bin\Setup: $($empty.FullName -join ', ')"
-          }
-
-          if (Test-Path '.\bin\ScamWYF.Launcher.pdb') {
-              Write-Host '  (a pdb is present and will not be packaged)'
-          }
-
-          $setupBytes = ($setupFiles | Measure-Object Length -Sum).Sum
-          Write-Host "  Setup: $($setupFiles.Count) files, $([math]::Round($setupBytes / 1MB, 1)) MB"
-
-          # Compressed rather than shipped raw: 12 MB of corlib is mostly .NET metadata and goes to a
-          # fraction of that, and it is one download either way.
-          $zip = "ScamWYF.Launcher-$env:GITHUB_REF_NAME.zip"
-          Compress-Archive -Path ($expected | ForEach-Object { Join-Path 'bin' $_ }) -DestinationPath $zip
-          Write-Host "  $zip ($((Get-Item $zip).Length) bytes)"
+          # The pairing of a release to the Setup commit it was compiled against, recorded by the run
+          # rather than only inside the binary. Built as a here-doc so the markdown table is readable in
+          # the source as well as in the summary.
+          {
+            echo "| Platform | File | Bytes |"
+            echo "|---|---|---|"
+            for file in dist/linux-x64/ScamWYF.Launcher dist/win-x64/ScamWYF.Launcher.exe; do
+              echo "| $(basename "$(dirname "$file")") | $(basename "$file") | $(stat -c%s "$file") |"
+            done
+            echo "| Launcher tag | $tag | |"
+            echo "| Setup ref | $SETUP_REF | |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: ScamWYF.Launcher-${{ github.ref_name }}.zip
+          files: |
+            Launcher/dist/linux-x64/ScamWYF.Launcher
+            Launcher/dist/win-x64/ScamWYF.Launcher.exe
           generate_release_notes: true
           draft: false

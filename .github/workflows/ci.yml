@@ -1,21 +1,23 @@
 name: ci
 
-# Builds and tests the launcher.
+# Builds, tests and publishes the launcher.
 #
-# Unlike the mods, this repo does not need the game: it targets .NET Framework 4.8, which every Windows
-# runner already has, and stages its own Mono.Cecil, so a hosted runner has everything it needs. That is
-# the reason the launcher is a separate repo with its own build rather than a mode of a mod.
+# Unlike the mods, this repo does not need the game: the setup is a library reference
+# (ScamWYF.Setup.Core) and the ~12 MB of corlib and Doorstop it seeds are embedded in the executable, so a
+# hosted runner has everything it needs and there is nothing to stage beside the exe.
 #
-# It does need Setup, because the Setup tab runs Setup's scripts and those scripts carry ~12 MB of
-# vendored binaries that have to be in the published zip. So Setup is checked out here too and handed to
-# build.ps1 with -SetupPath. Without that, the Setup tab would be dead in every artefact this workflow
-# produces, and every published release.
+# It does need Setup's source, because the launcher compiles against it. Setup is checked out as a sibling
+# of this repository, which is where the ProjectReference (../Setup/src/ScamWYF.Setup.Core) looks for it.
+#
+# There is no game-side UI pass here yet. The WPF build had a Windows-only UI-automation pass - require a
+# real window handle, hover every button, run the setup through the tab - and that is WPF's UIAutomation
+# API. It has not been ported to Avalonia; until it is, what this covers is the build, the offline tests,
+# and that both platforms publish as one self-contained file each.
 
 env:
-  # The Setup tag whose scripts get bundled, pinned rather than tracking Setup's main for the same
-  # reason release.yml builds a tagged commit: a release has to be reproducible, and "whatever Setup's
-  # branch pointed at this morning" is not that. Bump it when a Setup release should reach users, and
-  # the commit it resolved to is recorded in bin\Setup\SETUP-VERSION.txt by every run that builds.
+  # The Setup commit the launcher is compiled against. A tag, not a branch, so a release is
+  # reproducible: "whatever Setup's main pointed at this morning" is not a release input. Bump it when a
+  # Setup change should reach users; release.yml pins the same value.
   SETUP_REF: v1.0.1
 
 on:
@@ -26,493 +28,64 @@ on:
 
 jobs:
   build:
-    name: Build and check
-    runs-on: windows-latest
+    name: Build, test and publish
+    runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out Launcher
+        uses: actions/checkout@v4
+        with:
+          path: Launcher
 
-      # Into the workspace rather than beside it. build.ps1 finds a sibling Setup\ on its own, and a
-      # developer running these repos locally has it there; -SetupPath is what this needs, because
-      # actions/checkout does not write outside $GITHUB_WORKSPACE.
+      # A sibling of Launcher\, which is where the ProjectReference looks for it.
       - name: Check out Setup
         uses: actions/checkout@v4
         with:
           repository: swyf-modding/Setup
           ref: ${{ env.SETUP_REF }}
-          path: setup-src
+          path: Setup
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.x'
 
-      # The launcher targets .NET Framework 4.8, so it needs that targeting pack. setup-dotnet does not
-      # install it; windows-latest ships it with the Visual Studio image.
-      #
-      # Resolved by highest-version-present rather than demanding v4.8 exactly, so this check cannot
-      # disagree with the build: a stricter check here fails a build that would have succeeded and
-      # reports it as a missing toolchain when the real problem is this file.
-      - name: Confirm the reference assemblies are present
-        shell: pwsh
-        run: |
-          $base = 'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework'
-          $found = $null
-
-          if (Test-Path (Join-Path $base 'v4.8')) {
-              $found = Join-Path $base 'v4.8'
-          } elseif (Test-Path $base) {
-              # Highest version present. Sorted by parsed Version rather than by name, because a name
-              # sort puts v4.9 above v4.10.
-              $found = Get-ChildItem $base -Directory |
-                  Where-Object { $_.Name -match '^v(\d+)\.(\d+)' } |
-                  Sort-Object { [version]($_.Name.TrimStart('v')) } -Descending |
-                  Select-Object -First 1 -ExpandProperty FullName
-          }
-
-          if (-not $found) {
-              Write-Error "No .NET Framework 4.x reference assemblies under $base. The runner image needs them."
-          }
-          Write-Host "reference assemblies: $found"
-
       - name: Build
-        shell: pwsh
-        run: .\build.ps1 -SetupPath .\setup-src
+        working-directory: Launcher
+        run: dotnet build Launcher.csproj -c Release
 
-      # The payload the Setup tab depends on, checked by name. build.ps1 already refuses to stage an
-      # incomplete one, so this is not checking whether the copy happened - it is checking that this
-      # build published a *usable* Setup, which is the property that was broken and the reason the zip
-      # grew.
-      #
-      # Specifically the eight corlib assemblies: a partial payload gets the user a button that runs a
-      # script which seeds half an override and then cannot start the game, and the failure lands in
-      # the game's log rather than in anything the launcher said. Cheaper to make sure here.
-      - name: Confirm the Setup payload is complete
-        shell: pwsh
+      - name: Run the offline tests
+        working-directory: Launcher
+        run: ./tools/test-getmods.sh
+
+      # Both platforms from one run, the same command a developer runs. The version is stamped from the
+      # tag when the checkout has one, and from the commit otherwise.
+      - name: Publish
+        working-directory: Launcher
+        run: ./build.sh
+
+      # A self-contained file carries the runtime and the embedded setup payload, so it is tens of
+      # megabytes. A framework-dependent stub is tens of kilobytes, and shipping one silently is the
+      # failure this check exists to catch.
+      - name: Confirm each platform is one self-contained file
+        working-directory: Launcher
         run: |
-          $expected = @(
-              'setup.ps1'
-              'GameDir.ps1'
-              'install-bepinex.ps1'
-              'SETUP-VERSION.txt'
-              'tools\unstrip-awaiters.ps1'
-              'tools\find-vtable-breaks.ps1'
-              'tools\patch-preloader.ps1'
-              'tools\compare-corlib.ps1'
-              'tools\scan-missing-apis.ps1'
-              'vendor\corlib\mscorlib.dll'
-              'vendor\corlib\System.dll'
-              'vendor\corlib\System.Core.dll'
-              'vendor\corlib\System.Configuration.dll'
-              'vendor\corlib\System.Numerics.dll'
-              'vendor\corlib\System.Security.dll'
-              'vendor\corlib\System.Xml.dll'
-              'vendor\corlib\Mono.Security.dll'
-              'vendor\corlib\LICENSE-Mono'
-              'vendor\doorstop\winhttp.dll'
-              'vendor\doorstop\.doorstop_version'
-              'vendor\doorstop\doorstop_config.ini'
-              'vendor\doorstop\LICENSE'
-              # Redistribution obligations, not payload. Setup's own CI checks them, and a Launcher
-              # release is the thing that actually redistributes them, so this is where a missing
-              # licence text should be caught.
-              'LICENSE'
-              'README.md'
-              'vendor\README.md'
-              'vendor\corlib\LICENSE-Mono'
-          )
-
-          $missing = @()
-          foreach ($relative in $expected) {
-              # -LiteralPath rather than -Path: the names here are literal, and a path that happens to
-              # contain a wildcard character would otherwise be read as a pattern rather than a file.
-              $path = Join-Path 'bin\Setup' $relative
-              if (-not (Test-Path -LiteralPath $path)) { $missing += $relative }
-              elseif ((Get-Item -LiteralPath $path).Length -eq 0) { $missing += "$relative (empty)" }
-          }
-
-          if ($missing) {
-              throw ("bin\Setup is incomplete, so the Setup tab would be dead in this artefact:`n  " +
-                     ($missing -join "`n  "))
-          }
-
-          # Every script has to parse. Setup's own CI checks this in the Setup repo; repeating it here
-          # means a Launcher build refuses a payload whose scripts are broken, rather than discovering it
-          # on a user's machine with a game install at stake.
-          foreach ($script in Get-ChildItem -Path 'bin\Setup' -Filter *.ps1 -Recurse) {
-              $errors = $null
-              $null = [System.Management.Automation.Language.Parser]::ParseFile(
-                  $script.FullName, [ref]$null, [ref]$errors)
-              if ($errors -and $errors.Count) {
-                  $errors | ForEach-Object { Write-Host "  $($script.Name) line $($_.Extent.StartLineNumber): $($_.Message)" -ForegroundColor Red }
-                  throw "bundled $($script.Name) does not parse"
-              }
-          }
-
-          $stamp = (Get-Content -LiteralPath 'bin\Setup\SETUP-VERSION.txt' | Where-Object { $_.Trim() } | Select-Object -First 1)
-          Write-Host "  $stamp"
-          Write-Host "  $stamp" >> $env:GITHUB_STEP_SUMMARY
-
-          # Counted, not assumed from $expected: build.ps1 stages a few more files than this list names,
-          # and a count that silently disagrees with the folder is the sort of small wrongness that gets
-          # quoted back later as the truth.
-          $staged = @(Get-ChildItem 'bin\Setup' -Recurse -File)
-          $bytes = ($staged | Measure-Object Length -Sum).Sum
-          Write-Host ("  {0} files, {1:N1} MB" -f $staged.Count, ($bytes / 1MB))
-
-      # A Color where a Brush belongs compiles, renders, and throws only when a trigger fires - so on
-      # hover, or on a scrollbar thumb, or on a disabled control. Nothing else in this workflow would
-      # notice: the build is green and the window looks right in a screenshot.
-      #
-      # Checked statically instead, because that is the only way to cover the triggers a person has not
-      # happened to touch. Every colour key gets exactly one legitimate use - the Color= attribute of the
-# brush built from it - so any other use of one is the bug.
-      - name: Check that colours are not used where a brush is required
-        shell: pwsh
-        run: |
-          $theme = Get-Content 'src\Theme.xaml' -Raw
-          $colorKeys = [regex]::Matches($theme, '<Color\s+x:Key="(\w+)"') |
-              ForEach-Object { $_.Groups[1].Value }
-
-          if (-not $colorKeys) { throw 'no <Color> keys found - has the palette been renamed?' }
-
-          $bad = @()
-
-          # XAML: a colour key may only be used as the Color= attribute of the brush built from it.
-          $files = @(Get-ChildItem src -Recurse -Filter *.xaml | ForEach-Object { $_.FullName })
-          foreach ($file in $files) {
-              $text = Get-Content $file -Raw
-              foreach ($key in $colorKeys) {
-                  # Capture the attribute name each use sits in, so the legitimate
-                  # Color="{StaticResource X}" can be told apart from a misuse.
-                  $pattern = '([\w:.]+)="\{StaticResource\s+' + [regex]::Escape($key) + '\s*}"'
-                  foreach ($m in [regex]::Matches($text, $pattern)) {
-                      if ($m.Groups[1].Value -ne 'Color') {
-                          $line = ($text.Substring(0, $m.Index) -split "`n").Count
-                          $rel = $file.Substring($PWD.Path.Length + 1)
-                          $bad += "$rel line $line : $($m.Groups[1].Value) = {StaticResource $key}"
-                      }
-                  }
-              }
-          }
-
-          # C#: FindResource("SomethingColor") cast to a Brush is the same mistake, and it is not
-          # caught by the XAML pass above. This one is not hypothetical: an editor asked for
-          # "BorderColor" instead of "BorderBrush" and threw InvalidCastException the moment a row
-          # was drawn. A cast to Brush cannot be verified by reading the line, so the rule is simply
-          # that no code asks for a *Color key when it wants a brush.
-          $codeFiles = @(Get-ChildItem src -Recurse -Filter *.cs | ForEach-Object { $_.FullName })
-          foreach ($file in $codeFiles) {
-              $text = Get-Content $file -Raw
-              foreach ($key in $colorKeys) {
-                  $pattern = '\(\s*Brush\s*\)\s*(?:[A-Za-z.]*\.)?FindResource\(\s*"' +
-                             [regex]::Escape($key) + '"\s*\)'
-                  foreach ($m in [regex]::Matches($text, $pattern)) {
-                      $line = ($text.Substring(0, $m.Index) -split "`n").Count
-                      $rel = $file.Substring($PWD.Path.Length + 1)
-                      $bad += "$rel line $line : (Brush)FindResource(""$key"") - $key is a Color"
-                  }
-              }
-          }
-
-          if ($bad) {
-              $bad | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
-              throw ('A colour key is being used where a brush is required.' +
-                     ' Add a SolidColorBrush for it beside the others and reference that.' +
-                     ' WPF does not convert Color to Brush at runtime, and a XAML trigger only' +
-                     ' fails once it fires.')
-          }
-
-          Write-Host "checked $($colorKeys.Count) colour keys across $($files.Count) XAML and $($codeFiles.Count) C# files"
-
-      # Compiling is not a check. The exe is a GUI program, so the useful verification is that it
-      # starts, resolves Mono.Cecil from beside itself, and finds the game - which is also the one
-      # thing that differs between a developer's machine and a fresh clone.
-      #
-      # Worth more now than it was. WPF resolves styles, templates and pack URIs at load time from
-      # compiled XAML, so a mistake in a XAML file is not a compile error - the build stays green and the
-      # window fails to appear when it opens. Surviving startup is what catches that class of fault, which
-      # is why it is a step here rather than a thing left to a person to notice.
-      - name: Smoke test
-        shell: pwsh
-        run: |
-          $exe = '.\bin\ScamWYF.Launcher.exe'
-          if (-not (Test-Path $exe)) { throw "no exe at $exe" }
-          if (-not (Test-Path '.\bin\Mono.Cecil.dll')) { throw 'Mono.Cecil was not copied next to the exe' }
-
-          # Launch, and require a real window rather than merely a live process. A WPF app whose XAML
-          # fails to load can end up running with nothing on screen, so a process that stays up is not
-          # on its own evidence that the window was built.
-          $process = Start-Process $exe -PassThru
-          Start-Sleep -Seconds 6
-
-          if ($process.HasExited) { throw "the launcher exited immediately (code $($process.ExitCode))" }
-          $process.Refresh()
-          if ($process.MainWindowHandle -eq 0) {
-              Stop-Process -Id $process.Id -Force
-              throw 'the launcher stayed up but never created a window - a XAML resource probably failed to load'
-          }
-
-          Write-Host "window: '$($process.MainWindowTitle)'"
-          Stop-Process -Id $process.Id -Force
-          Write-Host 'started and stayed up'
-
-      # Sweep the mouse over every button on every tab and fail if the error reporter comes up.
-      #
-      # Best-effort, and deliberately described as such: it depends on the cursor actually reaching the
-      # window, which on a runner depends on there being a desktop session to aim at. If it silently
-      # hovers nothing it passes, so it must never be mistaken for a guarantee. The colour/brush check
-      # above is the deterministic one - this exists for the triggers that are neither, and it did catch
-      # a real one: a Color assigned to a Background threw only on hover, after a green build and a
-      # screenshot that looked right.
-      - name: Hover every button
-        shell: pwsh
-        run: |
-          Add-Type -AssemblyName UIAutomationClient
-          Add-Type -AssemblyName UIAutomationTypes
-          Add-Type @'
-          using System;
-          using System.Runtime.InteropServices;
-          public class Hover { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); }
-          '@
-
-          $exe = '.\bin\ScamWYF.Launcher.exe'
-          $process = Start-Process $exe -PassThru
-
-          try {
-              $deadline = (Get-Date).AddSeconds(25)
-              $root = $null
-              while ((Get-Date) -lt $deadline -and -not $root) {
-                  Start-Sleep -Milliseconds 400
-                  $root = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-                      [System.Windows.Automation.TreeScope]::Children,
-                      (New-Object System.Windows.Automation.PropertyCondition(
-                          [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id)))
-              }
-              if (-not $root) { throw 'window never appeared' }
-              try { $root.SetFocus() } catch {}
-              Start-Sleep -Seconds 2
-
-              $byType = @{
-                  Tab    = [System.Windows.Automation.ControlType]::TabItem
-                  Button = [System.Windows.Automation.ControlType]::Button
-              }
-
-              function Get-Errors {
-                  $cond = New-Object System.Windows.Automation.PropertyCondition(
-                      [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id)
-                  $found = @()
-                  foreach ($w in [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
-                            [System.Windows.Automation.TreeScope]::Children, $cond)) {
-                      if ($w.Current.Name -eq 'Something went wrong') { $found += $w }
-                  }
-                  return $found
-              }
-
-              $tabCond = New-Object System.Windows.Automation.PropertyCondition(
-                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty, $byType.Tab)
-              $btnCond = New-Object System.Windows.Automation.PropertyCondition(
-                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty, $byType.Button)
-
-              $tabs = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $tabCond)
-              $hovered = 0
-
-              for ($t = 0; $t -lt $tabs.Count; $t++) {
-                  # Re-queried each time: the strip is disabled while work is going, and a cached element
-                  # then fails to select.
-                  $selected = $false
-                  for ($attempt = 0; $attempt -lt 4 -and -not $selected; $attempt++) {
-                      $tabs = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $tabCond)
-                      try {
-                          $tabs[$t].GetCurrentPattern(
-                              [System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-                          $selected = $true
-                      } catch { Start-Sleep -Seconds 2 }
-                  }
-                  Start-Sleep -Seconds 2
-
-                  foreach ($b in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $btnCond)) {
-                      $r = $b.Current.BoundingRectangle
-                      if ($r.Width -le 0) { continue }
-
-                      # Off the control first, so IsMouseOver genuinely goes false in between.
-                      [void][Hover]::SetCursorPos([int]($r.X + $r.Width / 2 + 400), [int]($r.Y + $r.Height / 2 + 300))
-                      Start-Sleep -Milliseconds 60
-                      [void][Hover]::SetCursorPos([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2))
-                      Start-Sleep -Milliseconds 220
-                      $hovered++
-
-                      $errs = Get-Errors
-                      if ($errs.Count) {
-                          $lines = $errs[0].FindAll([System.Windows.Automation.TreeScope]::Descendants,
-                              (New-Object System.Windows.Automation.PropertyCondition(
-                                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-                                  [System.Windows.Automation.ControlType]::Text)))
-                          foreach ($l in $lines) { Write-Host "    $($l.Current.Name)" -ForegroundColor Red }
-                          throw "hovering '$($b.Current.Name)' on tab $t raised the error dialog"
-                      }
-                  }
-              }
-
-              Write-Host "hovered $hovered controls across $($tabs.Count) tabs with no error dialog"
-              if ($hovered -eq 0) {
-                  Write-Warning 'no buttons were reachable - this pass proved nothing on this runner'
-              }
-          }
-          finally {
-              if (-not $process.HasExited) { $process.CloseMainWindow() | Out-Null; Start-Sleep -Milliseconds 800 }
-              if (-not $process.HasExited) { $process.Kill() }
-          }
-
-      - name: Run a script through the Setup tab
-        shell: pwsh
-        run: |
-          # Clicks "Set up / repair" for real and checks the process survives it.
-          #
-          # This is the one path where the app does its work on threads it does not own: the script's
-          # output arrives on the process's async reader and the exit code on the worker thread
-          # SetupRunner started. A DependencyProperty read from either of those throws, and an
-          # unhandled exception on a thread-pool thread does not raise a dialog - it ends the process.
-          # So this cannot be checked by looking at the window, and it is not hypothetical: reading one
-          # checkbox on the way past killed the launcher on every setup run, behind a green build.
-          #
-          # A stub script, not the real one. The point is the threading around a run, and the real script
-          # writes to the game install - which a build agent has no business doing.
-          Add-Type -AssemblyName UIAutomationClient
-          Add-Type -AssemblyName UIAutomationTypes
-
-          $stub = @(
-              'param([string]$GameDir, [switch]$Offline)',
-              'Write-Output "stub: starting"',
-              'Start-Sleep -Milliseconds 150',
-              'Write-Output "stub: middle"',
-              'Start-Sleep -Milliseconds 150',
-              'Write-Output "stub: done"',
-              'exit 0'
-          )
-          # The real setup.ps1 is moved aside rather than the folder being created fresh. This build now
-          # has a genuine bin\Setup\ payload in it - the thing the previous step verified - and the old
-          # `Remove-Item bin\Setup -Recurse` in the finally below would have thrown 12 MB of it away
-          # before the artefact was uploaded. Overwriting one file and putting it back is the smallest
-          # thing that gets a script in front of the tab.
-          New-Item -ItemType Directory -Force -Path 'bin\Setup' | Out-Null
-          $saved = Join-Path $env:RUNNER_TEMP 'launcher-ci-setup.ps1'
-          Copy-Item -LiteralPath 'bin\Setup\setup.ps1' -Destination $saved -Force
-          Set-Content -LiteralPath 'bin\Setup\setup.ps1' -Value $stub
-
-          # A minimal stand-in for a game install, passed as the first argument.
-          #
-          # Needed because the button is enabled only when a game is present as well as when the script
-          # is, and a build agent has no game. HasGame is exactly one File.Exists on the managed
-          # mscorlib, so an empty file is a complete answer to it - and because an explicit path is
-          # taken at face value, nothing else is probed or written.
-          $fake = Join-Path ([System.IO.Path]::GetTempPath()) 'scamwyf-ci-fake-install'
-          $managed = Join-Path $fake 'Scam With Your Friends_Data\Managed'
-          New-Item -ItemType Directory -Force -Path $managed | Out-Null
-          Set-Content -Path (Join-Path $managed 'mscorlib.dll') -Value ''
-
-          $exe = '.\bin\ScamWYF.Launcher.exe'
-          $process = Start-Process $exe -ArgumentList $fake -PassThru
-
-          try {
-              $deadline = (Get-Date).AddSeconds(25)
-              $root = $null
-              while ((Get-Date) -lt $deadline -and -not $root) {
-                  Start-Sleep -Milliseconds 400
-                  $root = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-                      [System.Windows.Automation.TreeScope]::Children,
-                      (New-Object System.Windows.Automation.PropertyCondition(
-                          [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id)))
-              }
-              if (-not $root) { throw 'window never appeared' }
-              try { $root.SetFocus() } catch {}
-              Start-Sleep -Seconds 2
-
-              $btnCond = New-Object System.Windows.Automation.PropertyCondition(
-                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-                  [System.Windows.Automation.ControlType]::Button)
-              $editCond = New-Object System.Windows.Automation.PropertyCondition(
-                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-                  [System.Windows.Automation.ControlType]::Edit)
-
-              $repair = $null
-              foreach ($b in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $btnCond)) {
-                  if ($b.Current.Name -eq 'Set up / repair') { $repair = $b }
-              }
-              if (-not $repair) { throw 'the Setup tab has no "Set up / repair" button' }
-              if (-not $repair.Current.IsEnabled) {
-                  # Two things gate it, and saying which saves the next person a guess.
-                  throw ('"Set up / repair" is disabled. The button needs both a game install and a' +
-                         ' setup script: stub at bin\Setup\setup.ps1 is ' +
-                         $(if (Test-Path 'bin\Setup\setup.ps1') { 'present' } else { 'MISSING' }) +
-                         ', and the fake install at ' + $fake + ' is ' +
-                         $(if (Test-Path (Join-Path $managed 'mscorlib.dll')) { 'present' } else { 'MISSING' }))
-              }
-
-              $repair.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-              Write-Host 'clicked "Set up / repair"'
-
-              # Wait for the completion line, which only appears if every callback made it back to the
-              # UI thread and the run finished.
-              $died = 'the launcher died during the script run'
-
-              $deadline = (Get-Date).AddSeconds(60)
-              $finished = $false
-              while ((Get-Date) -lt $deadline -and -not $finished) {
-                  Start-Sleep -Seconds 2
-                  $process.Refresh()
-
-                  if ($process.HasExited) {
-                      # 0xE0434352 is the CLR's unhandled-exception exit code, and it is what touching
-                      # a control from the script's own thread produces. Naming the exit code turns a
-                      # baffling number into the diagnosis it is.
-                      throw ('{0} (exit 0x{1:X8})' -f $died, $process.ExitCode)
-                  }
-
-                  try {
-                      foreach ($e in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $editCond)) {
-                          try {
-                              $v = $e.GetCurrentPattern(
-                                  [System.Windows.Automation.ValuePattern]::Pattern).Current.Value
-                              if ($v -match 'setup finished|setup reported problems') { $finished = $true }
-                          } catch { }
-                      }
-                  }
-                  catch {
-                      # UI Automation reports a dying window as E_UNEXPECTED rather than as "gone", so a
-                      # crash here would otherwise surface as a baffling COM error. Check what actually
-                      # happened and say that instead.
-                      $process.Refresh()
-                      if ($process.HasExited) {
-                          throw ('{0} (exit 0x{1:X8})' -f $died, $process.ExitCode)
-                      }
-                      throw
-                  }
-              }
-
-              if (-not $finished) { throw 'the script run never reported completion' }
-              Write-Host 'the run streamed its output, completed, and left the launcher running'
-          }
-          finally {
-              if (-not $process.HasExited) { $process.CloseMainWindow() | Out-Null; Start-Sleep -Milliseconds 800 }
-              if (-not $process.HasExited) { $process.Kill() }
-              # The real script back, so the artefact uploaded below ships a working Setup rather than
-              # whatever this step happened to leave in its place.
-              if ($saved -and (Test-Path -LiteralPath $saved)) {
-                  Move-Item -LiteralPath $saved -Destination 'bin\Setup\setup.ps1' -Force
-              }
-              Remove-Item $fake -Recurse -Force -ErrorAction SilentlyContinue
-          }
-
-      - name: Run the Get mods tests
-        shell: pwsh
-        run: .\tools\test-getmods.ps1
+          set -euo pipefail
+          for file in dist/linux-x64/ScamWYF.Launcher dist/win-x64/ScamWYF.Launcher.exe; do
+            [ -f "$file" ] || { echo "missing $file" >&2; exit 1; }
+            size=$(stat -c%s "$file")
+            if [ "$size" -lt 20000000 ]; then
+              echo "$file is only $size bytes - not a self-contained publish" >&2
+              exit 1
+            fi
+            echo "  $file: $size bytes"
+          done
 
       - name: Upload the build output
-        # Uploaded rather than committed: bin\ is generated, and the point here is to have the exact
-        # artefact a release would publish available from the run that verified it.
+        # Uploaded rather than committed: dist\ is generated, and the point here is to have the exact
+        # files a release would publish available from the run that verified them.
         uses: actions/upload-artifact@v4
         with:
           name: ScamWYF.Launcher
-          path: bin/
+          path: Launcher/dist/
           if-no-files-found: error

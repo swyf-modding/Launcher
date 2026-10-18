@@ -5,14 +5,18 @@
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![version](https://img.shields.io/github/v/release/swyf-modding/Launcher?label=version)
 ![game build](https://img.shields.io/badge/game-0.1.71--swyf-blue)
-![framework](https://img.shields.io/badge/.NET%20Framework-4.8-blue)
+![framework](https://img.shields.io/badge/.NET-10-512BD4)
 
 *Built with:*
 
 ![C#](https://img.shields.io/badge/C%23-512BD4?style=for-the-badge&logo=csharp&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-512BD4?style=for-the-badge&logo=dotnet&logoColor=white)
-![WPF](https://img.shields.io/badge/WPF-512BD4?style=for-the-badge)
+![Avalonia](https://img.shields.io/badge/Avalonia-8B44AC?style=for-the-badge&logo=avaloniaui&logoColor=white)
 ![Mono.Cecil](https://img.shields.io/badge/Mono.Cecil-0.11.6-9a3d3d?style=for-the-badge)
+
+> ⚠️ **Linux support is VERY experimental.** The launcher runs under Avalonia on Linux and drives the
+> same Setup Core under Proton, but this is validated on one machine only (NVIDIA + Wayland). Windows
+> is the mature path. Known Linux traps are listed in the Setup README (`winhttp=n,b`, `-whisper-cpu`).
 
 </div>
 
@@ -25,7 +29,7 @@
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
   - [Developer Setup](#developer-setup)
-  - [The Setup payload](#the-setup-payload)
+  - [How setup runs](#how-setup-runs)
   - [Usage](#usage)
   - [Testing](#testing)
 - [Compatibility](#compatibility)
@@ -42,26 +46,30 @@
 
 ## Overview
 
-**ScamWYF.Launcher** is an unofficial, community-built Windows launcher and mod manager for **Scam With
-Your Friends**. Three tabs: fix the install, manage mods, read the log.
+**ScamWYF.Launcher** is an unofficial, community-built launcher and mod manager for **Scam With Your
+Friends**. Four tabs: fix the install, manage mods, get mods, read the log. It runs on **Windows** and, for
+players on **Linux**, under **Proton** — the same one file on both.
 
 **Key Features:**
 
 - **Diagnoses a partial install.** Reports the game, loader, corlib override, its wiring and BepInEx as
   separate checks, because a half-installed game is the case that matters and "not installed" is not a
   useful answer to it
-- **Runs the real setup script.** Delegates to [Setup](https://github.com/swyf-modding/Setup)'s `setup.ps1` and streams its
-  output live, rather than reimplementing it in a button handler. Those scripts **ship inside this
-  download**, vendored binaries and all, so the Setup tab works from an unpacked zip
+- **Runs the real setup, in-process.** Delegates to [Setup](https://github.com/swyf-modding/Setup)'s setup
+  logic through its `ScamWYF.Setup.Core` library and streams the run into the window, rather than
+  reimplementing it in a button handler. The vendored Doorstop and the unstripped corlib the setup needs
+  are **compiled into the executable**, so the Setup tab works from a single file with no folder beside it
 - **Lists and manages mods.** Every dll in `plugins` and `plugins_disabled`, read from `[BepInPlugin]`
   metadata, with enable, disable and delete
+- **Installs mods from the catalogue.** Fetches the live mod list, downloads a release, verifies it, shows
+  exactly what will be written, and only then installs
 - **Shows the log where you can act on it.** `LogOutput.log` with the interesting lines picked out, and
   optional live following while the game runs
 - No redistributed game DLLs, decompiled game source, telemetry, or credential collection
 
 > [!IMPORTANT]
-> The launcher **never writes to your game folder without running the setup script**. Everything on the
-> Setup tab is that script's own doing; everything on the Mods tab is a move or a delete between two
+> The launcher **never writes to your game folder without running the setup**. Everything on the
+> Setup tab is that setup's own doing; everything on the Mods tab is a move or a delete between two
 > folders. If a step is refused, the reason is stated rather than attempted and failed.
 
 > [!NOTE]
@@ -79,82 +87,68 @@ This project is not affiliated with or endorsed by the developers or publisher o
 
 - A legally installed copy of **Scam With Your Friends**, with the build listed under
   [Compatibility](#compatibility)
-- Windows x64 with .NET Framework 4.8 or later — preinstalled on Windows 10 and 11, and **all the
-  launcher needs**. No game-side runtime, no Mono, no .NET SDK to run it
+- **Windows x64 or Linux x64**, and nothing else. The download is a **self-contained** .NET 10
+  executable: the runtime is inside the file, so there is no .NET to install, no PowerShell to have, and
+  no second download
+
+On Linux the game runs under Proton, and everything the launcher does there is the same work on the same
+game folder — it is Wine that needs one setting, and the launcher checks for it and tells you how to set
+it. See [Playing on Linux](#playing-on-linux).
 
 Nothing else. [Setup](https://github.com/swyf-modding/Setup) used to be a second repository to clone
-before this tool did anything; its scripts and vendored binaries are in the download now.
+before this tool did anything; its setup logic and vendored binaries are inside the executable now.
 
 ### Installation
 
-1. Download the latest release and unzip it.
-2. Run `ScamWYF.Launcher.exe`.
+1. Download the release for your platform — `ScamWYF.Launcher.exe` for Windows, `ScamWYF.Launcher` for
+   Linux.
+2. Run it. On Linux, make it executable first: `chmod +x ScamWYF.Launcher`.
 
-There is nothing to install, and no second download.
+There is nothing to install, no second download, and **no folder to keep beside it**:
 
 ```text
-ScamWYF.Launcher.exe
-Mono.Cecil.dll
-Setup\
-|-- setup.ps1             the Setup tab runs this
-|-- SETUP-VERSION.txt     which Setup these scripts are, as recorded at build time
-|-- GameDir.ps1
-|-- install-bepinex.ps1
-|-- tools\
-`-- vendor\
-    |-- corlib\           the unstripped BCL, about 12 MB
-    `-- doorstop\         the loader half
+ScamWYF.Launcher        Windows: ScamWYF.Launcher.exe
 ```
 
-**Keep the `Setup\` folder.** It is most of the download and it is not optional — the Setup tab is those
-scripts, and they carry the vendored Doorstop and the unstripped corlib, which cannot be fetched at
-runtime. An incomplete unzip shows up immediately as a **Setup scripts: missing** row on the Setup tab
-and a disabled **Set up / repair** button, and the tab says what to do about it.
-
-Move the folder anywhere you like; the launcher finds `Setup\` relative to its own exe.
+That is the whole download. The setup logic and the ~12 MB of corlib and Doorstop binaries it seeds into
+the game are compiled into the executable as embedded resources, so there is no second file or folder a
+partial download could have left out.
 
 ### Developer Setup
 
-```powershell
+```bash
 git clone https://github.com/swyf-modding/Launcher.git
-git clone https://github.com/swyf-modding/Setup.git     # a sibling of Launcher\
 cd Launcher
-dotnet build -c Release    # a complete build on its own
-.\build.ps1                # the same, plus tag versioning, the Setup payload, and a publishable bin\
-.\build.ps1 -Cecil C:\path\to\Mono.Cecil.dll
-.\build.ps1 -Version 1.2.3 # stamp a version rather than reading the tag
-.\build.ps1 -SetupPath C:\src\Setup                     # Setup is not a sibling
-.\build.ps1 -NoSetup        # exe only; the Setup tab will be disabled
+dotnet build -c Release     # a complete build on its own
+./build.sh                  # publish both platforms, one self-contained file each, into dist/
+./build.sh --version 1.2.3  # stamp a version rather than reading the tag
+./build.sh --runtime linux-x64
 ```
 
-An SDK-style project — `Launcher.csproj` — like the mods. No NuGet packages and no restore step: the only
-external dependency is [Mono.Cecil](vendor/README.md), staged in `vendor\` and referenced by path, so the
-build needs neither network nor game.
+On Windows the same thing is `.\build.ps1`, and it takes the same switches. Nothing else needs
+cloning — there is no Setup checkout to fetch and no vendored dll to stage.
 
-`build.ps1` is a thin wrapper around `dotnet build`. It adds the three things a plain build cannot do —
-stamping the version from the nearest git tag, staging Setup's payload into `bin\Setup\`, and reducing
-`bin\` to what gets published — and `dotnet build -c Release` remains a complete, equivalent command for
-the exe. It used to compile Roslyn by hand with no project file; that stopped being sensible when the UI
-became WPF, because XAML has to be compiled by MSBuild's markup compiler, so a `.csproj` arrived
-regardless and the hand-rolled `csc` line became a second description of the same build that could
-disagree with the first.
+An SDK-style project — `Launcher.csproj` — like the mods. The only external dependency is
+[Mono.Cecil](https://github.com/jbevain/cecil), a NuGet package pulled in by `ScamWYF.Setup.Core`; the
+launcher's own code adds `Avalonia` and nothing else. `dotnet build -c Release` is a complete build of
+the exe for the current platform; `build.sh`/`build.ps1` are thin wrappers around `dotnet publish` that
+add the three things a plain build cannot do — stamping the version from the nearest git tag, publishing
+**both** platforms in one run, and reducing the output to a single file in `dist/`.
 
-**This targets the .NET Framework 4.8 reference assemblies and needs no game install at all.** The mods
-compile against the game's own assemblies; this does not. A tool whose job is to repair a broken game
-install cannot share a dependency with the thing it repairs.
-
-net48 rather than a modern .NET is deliberate. A `net8.0`/`net10.0` build would be framework-dependent
-too, but on a runtime that is not present by default, so a player whose game install is already broken
-would have to install something before this would start. .NET Framework 4.8 ships with every Windows 10
-and 11, so the download runs on a clean machine.
+**This is Avalonia on .NET 10, and it is cross-platform on purpose.** The previous build was WPF on .NET
+Framework 4.8, which shipped with every Windows 10 and 11 and so needed nothing installed — but WPF is
+Windows-only by construction, and .NET Framework has no Linux. Avalonia draws the same UI on Windows,
+Linux and macOS from one codebase, and .NET 10 publishes self-contained, so the download is still a
+single file a player can just run. The UI framework changed; the layout, the palette and the interaction
+model did not, and the port kept them.
 
 The build is deterministic: the same commit compiles to the same bytes, which is what makes it worth
 saying afterwards exactly which commit a published binary came from.
 
 #### Versioning
 
-`build.ps1` reads the version from the nearest git tag and stamps it into the assembly. Nothing to edit
-by hand, so the number cannot drift from the code:
+`build.sh` and `build.ps1` read the version from the nearest git tag and stamp it into the assembly.
+Nothing to edit by hand, so the number cannot drift from the code:
 
 | | |
 |---|---|
@@ -170,47 +164,54 @@ about, so a local build cannot be mistaken for a release. With no tags at all th
 Two fallbacks, because a build has to work outside a checkout: no `git`, or no `.git\`, warns and
 stamps `0.0.0`; `-Version` sets the version outright, which is what a build from a source archive needs.
 
-### The Setup payload
+### How setup runs
 
-The Setup tab is not an implementation of setup; it runs [Setup](https://github.com/swyf-modding/Setup)'s
-scripts. Those scripts carry the vendored Doorstop and the unstripped corlib — about 12 MB of binaries
-that cannot be reimplemented or fetched at runtime — so the release has to contain them or the tab does
-nothing. It does.
+The Setup tab is not an implementation of setup. It runs [Setup](https://github.com/swyf-modding/Setup)'s
+setup logic **in-process**, through the `ScamWYF.Setup.Core` library that this project references:
 
-`bin\Setup\` is copied out of a Setup checkout at build time, by name, into Setup's own layout. The
-layout matters: the scripts dot-source each other with paths relative to `$PSScriptRoot`, so a
-tidied-up copy breaks the first thing a user runs. `build.ps1` records which Setup it took in
-`SETUP-VERSION.txt`, and the Setup tab reads that back and shows it, so a given launcher build can be
-matched to the scripts it shipped with.
+```xml
+<ProjectReference Include="../Setup/src/ScamWYF.Setup.Core/ScamWYF.Setup.Core.csproj" />
+```
 
-Setup is found beside this repository, or wherever `-SetupPath` points. A missing one is a **warning
-locally** — someone with only this repository can still build and work on the tool, they just get a
-launcher whose Setup tab is disabled — and a **failure in CI**, because a release published without the
-payload is the exact problem this arrangement exists to solve. `-NoSetup` is the explicit opt-out for the
-first case.
+`SetupRunner.Run` is handed the game folder, the payload and a log sink, and does the five steps Setup has
+always done — install the loader, seed the corlib override, restore the awaiter methods, patch the
+remaining vtable breaks, verify. Every line it writes goes into the window, so a run is as visible as it
+was when the tab drove `setup.ps1`; the difference is that it is a method call, not a child process.
 
-Setup is checked out as a second plain clone in both workflows rather than vendored or made a submodule,
-so this repository stays free of 12 MB of redistributable binaries in its history, and Setup stays the
-one place those scripts are edited. Both workflows pin a Setup **tag**, not its branch, so a release is
-reproducible; the resolved commit is printed in the run summary and written into the zip.
+This is why the exe is one file and there is no `Setup\` folder. The two things the setup cannot fetch at
+runtime — the unstripped BCL (about 12 MB) and the vendored Doorstop — are compiled into the assembly as
+**embedded resources** (`payload/corlib/...`, `payload/doorstop/...`), and `SetupPayload.ResolveDefault`
+reads them back. When the launcher is run from a source checkout, that same call finds the real `vendor/`
+folder first, so a developer iterating on the corlib uses the files on disk rather than a stale embed.
+
+Two consequences worth stating plainly:
+
+- **There is no build-time checkout of Setup any more.** The code is a project reference, so it is
+  compiled from wherever the sibling repository is, and the binaries are in `vendor/` next to it. The
+  release workflow pins the Setup commit via the reference it clones, and `build.ps1`/`build.sh` still
+  only need this repository plus that checkout to compile against.
+- **There is no PowerShell to run.** The old tab launched `setup.ps1` as a child process and marshalled
+  its output back; the port reads the same steps as library calls and marshals the log lines instead.
+  Nothing about the game folder changed — the steps and their order are identical.
 
 ### Usage
 
-**Setup** probes the install and runs the setup script.
+**Setup** probes the install, then runs the setup when asked.
 
 | Check | Why it is separate |
 |---|---|
-| Game install | `Scam With Your Friends_Data\Managed` has to exist |
+| Game install | `Scam With Your Friends_Data/Managed` has to exist |
 | Loader (Doorstop) | the loader half, which starts everything |
 | Corlib override | the usual cause of "it crashed" — the shipped `mscorlib` is stripped and BepInEx cannot start without it |
 | Override wired up | `doorstop_config.ini` has to point at it |
 | BepInEx | downloaded from GitHub, or already there |
-| Setup scripts | the only row about *this download* rather than the game — that the payload is present, and which Setup it is |
+| Setup payload | the only row about *this download* rather than the game — the embedded corlib and Doorstop, and whether they could be read |
+| Proton winhttp override | **Linux only.** Without it, Wine's own `winhttp.dll` wins and Doorstop never loads |
 
-**Set up / repair** runs `Setup\setup.ps1` and streams its output into the window as it goes. **Offline**
-is there for when BepInEx has already been downloaded, or there is no network. If the scripts are not
-beside the exe the buttons disable themselves and the tab says the download is incomplete, rather than
-leaving you to work out why a tab you installed is refusing to do its job.
+**Set up / repair** runs the setup in-process and streams its log into the window as it goes. **Offline**
+is there for when BepInEx has already been downloaded, or there is no network. The buttons only need a
+game install to exist; the setup logic and its payload are part of the exe, so there is nothing beside it
+that a partial download could have left out.
 
 **Mods** lists every dll in both folders with **Enable**, **Disable** and **Delete**. BepInEx has no
 enable/disable of its own, so a toggle is a file move between the two folders — the same thing a person
@@ -239,66 +240,83 @@ made during a session would be overwritten a moment later.
 preloader crash, before BepInEx starts, goes to `preloader_*.log` in the game folder instead, and the tab
 says so.
 
-**Play** starts the game. Passing a path as the first argument overrides where it is looked for.
+**Play** starts the game, and refuses while it is already running. Passing a path as the first argument
+overrides where the game is looked for. On Windows it starts the game's own exe; on Linux it goes through
+Steam, because that is how the game is played there and it keeps the user's chosen Proton and their
+overlays. See below.
+
+#### Playing on Linux
+
+The game is a Windows build, so on Linux it runs under **Proton**, and the launcher does the Windows
+work in the game folder as usual. One thing is different, and it is the thing that silently does nothing
+if it is missed: **Wine prefers its own `winhttp.dll` over the one Doorstop installs in the game folder**,
+so without an override Doorstop is never loaded and the game starts completely unmodded, with no error
+anywhere.
+
+The fix is a Steam launch option for the game:
+
+```text
+WINEDLLOVERRIDES="winhttp=n,b" %command% -whisper-cpu
+```
+
+Keep it exactly like that: `n` alone (the builtin disabled) makes the game crash in Unity's window
+code a minute or so into startup, which looks like the game refusing to start.
+
+The Setup tab shows a **Proton winhttp override** row on Linux, and **Play** sets the override in the
+Proton prefix itself when it can — best effort, because that is only safe when a prefix already exists
+and Wine is not running. If it cannot, it says so and prints the launch option to paste. Steam discovery
+(`SteamEnvironment`) finds the game in every Steam library, including the Flatpak and the usual
+`~/.steam` and `~/.local/share/Steam` locations, so the launcher works without being told where the game
+is.
 
 ### Testing
 
-```powershell
-.\tools\test-getmods.ps1            # 114 assertions, offline
-.\tools\test-getmods.ps1 -Online    # 20 more, against the real GitHub API
+```bash
+./tools/test-getmods.sh            # 184 assertions, offline
+./tools/test-getmods.sh --online   # plus a live check per known mod, against the real GitHub API
 ```
 
-```powershell
-dotnet run --project tests\Launcher.Tests.csproj -c Release
+On Windows the equivalent is `.\tools\test-getmods.ps1` with the same switches, and
+
+```bash
+dotnet run --project tests/Launcher.Tests.csproj -c Release
 ```
 
 is an equivalent command for the offline run. The two suites are separate programs rather than one with a
-filter, and both compile the app's own sources rather than referencing the built launcher — so the tests
-cannot pass against a stale copy of the logic.
+filter (both define a `Main`, so `Online` is a compile-time switch), and both compile the app's own
+sources rather than referencing the built launcher — so the tests cannot pass against a stale copy of the
+logic.
 
-Then check the three things a build alone would not: that it compiles, that Mono.Cecil was copied next to
-the exe, and that it starts **and creates a window**. That last part matters more in WPF than it did in
-WinForms. WPF resolves styles, templates and pack URIs at load time from compiled XAML, so a mistake in a
-`.xaml` file is not a compile error — the build stays green and the window fails to appear when it opens.
-Requiring a real window handle is what catches that, and it is why CI does this rather than leaving it to
-be noticed.
+What is under test is the logic and the file operations: zip-slip refused in both the `/` and `\` forms, a
+checksum mismatch caught, a real download unpacked and planned, catalogue validation, HTTPS-only downloads
+with redirects checked by hand, config parse/validate/round-trip, and the launcher-update comparison.
+
+Not covered by tests, and honestly so: **the UI**. It is presentation, and these tests are about what
+happens to files on disk. What that leaves is checked by running it: Avalonia resolves styles, control
+themes and `StaticResource` lookups when a window opens, so a resource mistake can be a build-clean,
+startup-failing error rather than a compile error. Starting the app and visiting each of the four tabs is
+what catches that, and there is no display-less equivalent committed here.
+
+Verified against a real install: the probes report `ready`, the installed mods appear with their real
+names and versions, and the Log tab picks the BepInEx channel lines out of the raw text.
+
+No game DLL belongs in this repository or in a GitHub release.
 
 #### What CI checks that a build cannot
 
-Three of them, and all three exist because of how WPF fails:
+The offline suite is the deterministic part, and it is what CI runs. The WPF build also had a
+Windows-only UI-automation pass — confirming the window handle appears, hovering every button to fire its
+triggers, and running the setup through the tab against a stub so the cross-thread marshalling was
+exercised. That pass is WPF's `UIAutomation` API and has **not** been ported to Avalonia yet; the
+Avalonia port's own UI checking was done headlessly (window and all four views constructed, resources
+resolved, every tab reloaded) at development time rather than in a committed harness. Porting it is a
+known follow-up, not something this arrangement pretends is done.
 
-| Check | Catches |
-|---|---|
-| Window handle after launch | XAML that compiles but will not load — a `StaticResource` that does not resolve, a bad `TargetName` |
-| A `Color` key assigned to a brush-typed property | A trigger whose `Setter` has the wrong value type. It throws **only when the trigger fires**, so on hover, on a scrollbar thumb, or when a control is disabled |
-| Hover every button on every tab | The same class of fault by any other route, and any other trigger that throws on interaction |
-| Run a script through the Setup tab | Touching a control from one of the threads the app does not own |
-| Config parse, validate and round trip | A settings edit that silently drops the documentation above it |
-
-The last two of those exist because of how WPF fails. A screenshot cannot hover anything, and a build
-cannot evaluate a trigger — so a green build once shipped a launcher that threw
-`InvalidOperationException` the moment anyone moved the mouse over a button.
-
-The script run is the nastier of the two, and worth spelling out. Running `setup.ps1` is the only thing
-this app does on threads it does not control: each output line arrives on the process's async reader and
-the exit code on a worker thread. Reading a `DependencyProperty` from either throws — and an unhandled
-exception on a thread-pool thread does not raise a dialog, it **ends the process**. That is not
-hypothetical: reading one checkbox on the way past killed the launcher on every single setup run. CI now
-runs a script through the tab, against a stub rather than the real one (the point is the threading, and the
-real script writes to the game install), and fails if the process does not survive it.
-
-The hover pass is best-effort and does not pretend otherwise: it depends on the cursor reaching the
-window, so it warns rather than fails if it managed to hover nothing. The colour/brush check and the
-script run are the deterministic ones.
-
-Not covered by tests, and honestly so: layout and the appearance of each tab. What is covered is that the
-window builds, that its resources resolve, that interacting with it does not throw, and that the one code
-path which crosses threads still works.
-
-Verified against a real install: the probes report `ready`, both installed mods appear with their real
-names and versions, and the log tab picks the BepInEx channel lines out of the raw text.
-
-No game DLL belongs in this repository or in a GitHub release.
+The threading point behind the old script run still stands and is still the risk worth naming: the setup
+reports from a thread the UI does not own — a line per log entry, and the result on a worker — and reading
+a control from either throws. An unhandled exception on a thread-pool thread does not raise a dialog, it
+**ends the process**. Every callback the setup is handed is marshalled onto the UI thread for exactly
+that reason, and that marshalling is the one code path a real setup run exercises.
 
 ---
 
@@ -309,14 +327,20 @@ No game DLL belongs in this repository or in a GitHub release.
 | Scam With Your Friends | `0.1.71-swyf` |
 | Unity | `6000.3.10f1` |
 | BepInEx | `5.4.23.5`, Mono preloader |
-| Target framework | .NET Framework 4.8 (WPF) |
-| C# language level | `7.3` |
-| Mono.Cecil | `0.11.6`, `net40` |
-| Platform | Windows x64 |
+| Target framework | .NET 10 (`net10.0`), self-contained |
+| UI framework | Avalonia `11.3.22` |
+| C# language level | `latest` |
+| Mono.Cecil | `0.11.6` (NuGet, via `ScamWYF.Setup.Core`) |
+| Platform | Windows x64, and Linux x64 under Proton |
 
-The C# language level is `7.3` and matches the mods. It is old for WPF, and that is accepted rather than
-fixed here: changing the language level is a separate decision from changing the UI framework, and mixing
-the two makes the port harder to review than it needs to be.
+The C# language level is `latest` now. The previous build pinned `7.3` to match the mods; the port to
+`.NET 10` and Avalonia made that pin pointless — the SDK and the UI framework both expect modern C# — so
+it was dropped here rather than carried forward as a second thing to reason about. The mods are their own
+repositories and are unchanged by this.
+
+The Linux support is the same game, the same BepInEx and the same files; what differs is that the game
+runs under Proton, and the winhttp override has to be in place for Doorstop to load. The launcher checks
+for it and sets it where it can — see [Playing on Linux](#playing-on-linux).
 
 Other game builds are untested. The launcher probes what it finds rather than assuming a layout, so an
 unexpected build will usually still work — it just reports what it actually sees.
@@ -347,41 +371,50 @@ both of which matter for a tool whose job includes deleting mods.
 ## Project Structure
 
 ```text
-Launcher.csproj        The project. net48 + WPF, and the only external reference is vendor\Mono.Cecil.dll
+Launcher.csproj        The project: net10.0 + Avalonia, referencing ScamWYF.Setup.Core
 src/
-|-- App.xaml(.cs)      Entry point, and the unhandled-exception reporter
+|-- Program.cs         The Avalonia entry point (BuildAvaloniaApp / StartWithClassicDesktopLifetime)
+|-- App.xaml(.cs)      Application resources, the theme include, and the unhandled-exception reporter
 |-- MainWindow.xaml    The four tabs, the status line, the Play button
-|-- MainWindow.xaml.cs  Also the host the views talk to: status, busy flag, re-read both mod tabs
-|-- Theme.xaml         The palette and every control style - see "How it looks"
-|-- Dialogs.cs         Modal confirmations, themed; WPF's MessageBox cannot be
-|-- GameInstall.cs     Finding and probing an install
-|-- SetupRunner.cs     Running Setup\setup.ps1, streaming its output, and naming the bundled version
--- ModManager.cs      Enable, disable, delete - the file operations
+|-- MainWindow.xaml.cs  Also the host the views talk to: status, busy flag, the in-process setup, Play
+|-- Theme.xaml         The palette, the control themes and the styles - see "How it looks"
+|-- Palette.cs         Reading the palette and control themes back out of the application resources
+|-- Dialogs.cs         Modal confirmations, themed; Avalonia has no MessageBox to theme
+|-- ModManager.cs      Enable, disable, delete - the file operations
 |-- ModConfig.cs       Reading, checking and rewriting a mod's BepInEx config
 |-- PluginScanner.cs   Reading [BepInPlugin] metadata with Cecil
 |-- PluginEntry.cs     One mod on disk
 |-- Http.cs            The only code that touches the network: https only, redirects checked by hand
 |-- ModCatalogue.cs    The mod list, live from ModCatalogue with a built-in fallback, and what GitHub says each latest release is
 |-- ModInstaller.cs    Download, unpack, verify, and only then install
+|-- UpdateChecker.cs   Is a newer launcher released? - the tag comparison behind the update bar
+|-- ScriptRunner.cs    Running a mod's optional post-install script, and collecting what it prints
 `-- views/
     |-- SetupView      The Setup tab
     |-- ModsView       The Mods tab
     |-- GetModsView    The Get mods tab
-      |-- ConfigWindow   The per-mod settings editor
-      `-- LogView        The Log tab
-build.ps1              dotnet build, plus tag versioning, the Setup payload, and a publishable bin\
+    |-- ConfigWindow   The per-mod settings editor
+    `-- LogView        The Log tab
+build.sh               Publish one self-contained file per platform into dist/, with tag versioning
+build.ps1              The same, on Windows
 tools/
-`-- test-getmods.ps1   Tests for the above: -Online also exercises a real download
+|-- test-getmods.ps1   Tests for the above; -Online also exercises a real download
+`-- test-getmods.sh    The same, on Linux
 tests/                 Launcher.Tests.csproj, GetModsTests.cs (offline), OnlineModTests.cs (needs network)
-vendor/                Mono.Cecil, staged and pinned
+vendor/                A pinned Mono.Cecil copy, kept for the record; the build gets Cecil from NuGet
 ```
 
-`bin\Setup\` is not in that list because it is not in the repository — it is staged from a Setup
-checkout by `build.ps1` at build time and lands in the release zip. See
-[The Setup payload](#the-setup-payload).
+`dist/` is not in that list because it is build output: it holds the published files, one per platform,
+each self-contained with the setup logic and payload embedded. See [How setup runs](#how-setup-runs).
 
-The split between `src\` and `src\views\` is the UI-free half against the UI. Everything the tests compile
-is the former, which is why `tests\Launcher.Tests.csproj` can build a test binary with no WPF at all.
+`GameInstall` and the setup itself are not in `src/` any more. They live in `ScamWYF.Setup.Core`, which
+this project references and which the CLI and the tests share; the launcher presents that code rather than
+duplicating it. The removed `GameInstall.cs` and `SetupRunner.cs` were the launcher's old copies, and they
+are gone rather than kept alongside the Core ones, so there is no second definition to drift.
+
+The split between `src/` and `src/views/` is the UI-free half against the UI. Everything the tests compile
+is the former (plus the referenced Core), which is why `tests/Launcher.Tests.csproj` builds a test binary
+with no Avalonia in it.
 
 ### How it looks
 
@@ -389,20 +422,20 @@ Dark, low-chroma, and the same palette the in-game menu uses — mod-lib's `UiTh
 live colours and falls back to these. So the launcher and the menu it opens are one system rather than
 two, and there is one file to change rather than a set of greys scattered through four tabs.
 
-Everything visual is a `Style` or a `ControlTemplate` in `Theme.xaml`. That is the whole reason for the
-move off WinForms, which needed three subclassed controls purely to draw chrome the framework had already
-coloured from system brushes — setting `BackColor` on a stock control does nothing to chrome it draws
-itself, which is most of what "looks like a 1998 app" actually is. Scrollbars were the worst of it and
-could not be themed at all; here they are a template, which is also how the last light thing in the window
-was dealt with.
+Everything visual is a `Style`, a `ControlTheme` or a resource in `Theme.xaml`, over Avalonia's
+`FluentTheme` with `RequestedThemeVariant="Dark"`. Recolouring the stock controls is mostly a matter of
+setting the palette resources Fluent reads; the four controls the app draws itself — the flat button, the
+accent button, the choice chip and the tab header — are `ControlTheme`s in the same file. That is the
+whole reason the UI is on a framework with templatable controls: the WinForms build needed subclasses
+purely to draw chrome the framework had already coloured from system brushes, and scrollbars could not be
+themed at all.
 
-One consequence worth knowing before editing a view: the column tables are **not** `GridView`.
-`GridViewColumn.Width` is converted by a plain double converter that has no idea what `*` means, so the
-one thing these tables need — a last column that fills the remaining width — cannot be expressed, and
-asking for it fails at load with `'*' string cannot be converted to Length`. Each table is a header `Grid`
-plus an `ItemTemplate` whose columns are tied together by `SharedSizeGroup`, which does support star
-sizing. Horizontal scrolling is off, so a header that stays put while the rows scroll looks identical to
-one that moves.
+One consequence worth knowing before editing a view: the column tables are a header `Grid` plus an
+`ItemTemplate` whose row grid repeats the same column widths, with a trailing `*` column so the last cell
+fills the width. Avalonia has no `SharedSizeGroup`, so those widths are written twice — once for the
+header, once for the rows — and that is deliberate: it is what keeps the last column filling the
+remaining space instead of being a fixed width. Editing a table means editing both. Horizontal scrolling
+is off, so a header that stays put while the rows scroll looks identical to one that moves.
 
 The window is 1060x720 because the content needs it. A row of checks with a detail column is not readable
 at 940x640, and the answer to that is not a narrower column.
@@ -460,7 +493,7 @@ dll placed by whether it carries a `[BepInPlugin]`: with one goes to `plugins`, 
 | `http://` | A mod is code the game runs. Plain HTTP can be replaced in transit, and there is no signature to notice afterwards |
 | A redirect to `http://` | Followed by hand rather than by the framework, so a downgrade is caught rather than obeyed |
 | `file://`, or a URL with a username | That is not a download; it is a local file read |
-| A zip entry named `../something` | Zip-slip. Every entry's resolved path is checked before it is written, so an archive cannot escape the temp folder |
+| A zip entry named `../something` or `..\something` | Zip-slip. Every entry's resolved path is checked before it is written — with both separators treated as separators, so the answer is the same on Linux as on Windows — so an archive cannot escape the temp folder |
 | A file over 32 MB | The largest thing here should be a 60 KB zip. Checked from the header, so it fails before a byte is written |
 | A file that is not a .NET assembly | Checked with Cecil, the same reader the Mods tab uses |
 | A mod with no `[BepInPlugin]` | BepInEx would not load it. The shared library is the exception, and it routes to `core` precisely so that is not a problem |
@@ -486,14 +519,20 @@ Hitting it says so, rather than reporting a generic failure.
 
 ## Continuous Builds
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request, on a hosted
-Windows runner: build, start the exe and check it survives, then upload `bin\`.
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request: build, run the
+offline tests, `./build.sh` to publish both platforms, confirm each is a single self-contained file, and
+upload `dist/`. That is possible because the launcher needs no game to build — the setup is a library
+reference and its payload is embedded — so the runner only needs this repository and a checkout of Setup
+to compile against.
 
-That is all possible because of the two decisions above — no game needed to build, and Cecil staged
-in-repo. The one thing it does need is Setup, so it checks that repository out alongside this one and
-hands it to `build.ps1 -SetupPath`, then verifies the staged payload by name and parses every bundled
-script. A run that produced a launcher with a dead Setup tab would pass every other step here, so it is
-checked directly. The mods' workflows are two-tiered precisely because they do need the game; see
+> [!NOTE]
+> There is no display-less UI pass yet. The WPF build had a Windows-only UI-automation pass — require a
+> real window handle, hover every button, run the setup through the tab — and that is WPF's `UIAutomation`
+> API. It has not been ported to Avalonia; see
+> [What CI checks that a build cannot](#what-ci-checks-that-a-build-cannot). That is a known gap, not a
+> guarantee.
+
+The mods' workflows are two-tiered precisely because they do need the game; see
 [mod-lib's](https://github.com/swyf-modding/mod-lib#continuous-builds) for what that looks like.
 
 ---
@@ -502,14 +541,14 @@ checked directly. The mods' workflows are two-tiered precisely because they do n
 
 Publishing is one command, because this is the one repo here that needs no game to build:
 
-```powershell
+```bash
 git tag v1.2.3
 git push origin v1.2.3
 ```
 
-[`.github/workflows/release.yml`](.github/workflows/release.yml) checks out Setup at a pinned tag, builds
-the tagged commit, packages `bin\` into `ScamWYF.Launcher-v1.2.3.zip` and publishes it as a GitHub
-release with generated notes.
+[`.github/workflows/release.yml`](.github/workflows/release.yml) builds the tagged commit and publishes a
+GitHub release with generated notes. What it publishes is the output of `build.sh`/`build.ps1`: one
+self-contained file per platform, `ScamWYF.Launcher` and `ScamWYF.Launcher.exe`.
 
 Three checks stand between a tag and a published binary, because a wrong version in a release is worse
 than no release:
@@ -524,27 +563,14 @@ It **rebuilds** rather than reusing the `ci.yml` artefact, on purpose: artefacts
 and tags do not, so a release driven from an artefact would one day have nothing to publish. The build
 is deterministic, so the bytes are the same either way.
 
-The zip holds three things: the exe, `Mono.Cecil.dll` beside it, and the `Setup\` folder. The first two
-have been checked since 1.0.0 — shipping the exe without the Cecil gives an exe that dies on startup
-with a `FileNotFoundException` — and the third is checked the same way, because a release without it
-ships a launcher that starts and cannot set up a game, which is the failure this arrangement was made to
-end. The packaging step refuses to zip anything it did not name, and `build.ps1` decides the contents
-of `Setup\` by name from the Setup manifest rather than by globbing it.
-
-**Both versions are published.** `bin\Setup\SETUP-VERSION.txt` records which Setup was bundled, the job
-summary prints it beside the launcher's own version, and the Setup tab shows it. The launcher and Setup
-are released separately, so "which scripts did this launcher ship with" is otherwise unanswerable from
-the zip in front of you. To move a Setup release out to users, bump `SETUP_REF` in `ci.yml` and
-`release.yml` — see [RELEASING.md](RELEASING.md).
+A release used to be a zip holding the exe, `Mono.Cecil.dll` and a `Setup\` folder. None of that is
+needed now: Cecil is inside the single file, and the setup payload is embedded in it, so the release is
+exactly the two published files and there is nothing beside them to keep, lose, or check.
 
 **The mods cannot use this workflow.** They compile against the game's own assemblies, which a hosted
 runner cannot have, so their releases are cut by hand on a machine with the game — build, package both
 DLLs, `gh release create`. There is no self-hosted runner, and deliberately so: a self-hosted job with
 no runner registered does not fail, it queues and sits for 24 hours. See
-[RELEASING.md](RELEASING.md).
-
-The mods are cut by hand instead — build, package both DLLs, `gh release create`. The full procedure
-for all five repositories, including the submodule ordering that has to be right, is in
 [RELEASING.md](RELEASING.md).
 
 ---
@@ -554,13 +580,14 @@ for all five repositories, including the submodule ordering that has to be right
 Please do not publish suspected vulnerabilities or private game data in a public issue, and do not paste
 `BepInEx\LogOutput.log` contents in public: mods in this ecosystem configure API keys with it.
 
-This tool runs a PowerShell script and moves files inside your game install. Both are deliberate and
-both are visible — the Setup tab streams the script's own output rather than summarising it — but
-install only releases you trust.
+This tool runs the setup and moves files inside your game install. Both are deliberate and both are
+visible — the Setup tab streams the run's own log rather than summarising it — but install only releases
+you trust.
 
-The scripts it runs are in the download rather than fetched at runtime, so what runs is what was
-reviewed and released. `Setup\vendor\` also carries the licence texts for what it redistributes: the
-Mono class libraries (MIT) and Doorstop and BepInEx (LGPL-2.1).
+The setup it runs is compiled into the download rather than fetched at runtime, so what runs is what was
+reviewed and released. The payload it seeds — the Mono class libraries (MIT) and Doorstop and BepInEx
+(LGPL-2.1) — is embedded in that same file, and the licence texts for it live in the
+[Setup](https://github.com/swyf-modding/Setup) repository it comes from.
 
 ---
 
@@ -568,10 +595,11 @@ Mono class libraries (MIT) and Doorstop and BepInEx (LGPL-2.1).
 
 MIT — Copyright © 2026 Ras_rap. See [LICENSE](LICENSE).
 
-[`vendor\Mono.Cecil.dll`](vendor/README.md) is a third-party binary under its own MIT licence, and is not
-covered by this one. The same applies to `Setup\`, which is redistributed unmodified from the
-[Setup](https://github.com/swyf-modding/Setup) repository under its own licence, together with the
-licence texts for the Mono class libraries and Doorstop binaries it carries.
+[`vendor/Mono.Cecil.dll`](vendor/README.md) is a third-party binary under its own MIT licence, and is not
+covered by this one. The build uses the Mono.Cecil NuGet package rather than this copy, but the file is
+kept in the repository. The corlib and Doorstop payload embedded in the executable is redistributed
+unmodified from the [Setup](https://github.com/swyf-modding/Setup) repository under its own licence,
+together with the licence texts for the Mono class libraries and Doorstop binaries it carries.
 
 ---
 
@@ -579,7 +607,7 @@ licence texts for the Mono class libraries and Doorstop binaries it carries.
 
 | Project | What it is |
 |---|---|
-| [Setup](https://github.com/swyf-modding/Setup) | The scripts the Setup tab runs: BepInEx, the corlib override, the vtable patches |
+| [Setup](https://github.com/swyf-modding/Setup) | The setup logic the Setup tab runs, as `ScamWYF.Setup.Core`: BepInEx, the corlib override, the vtable patches |
 | [mod-lib](https://github.com/swyf-modding/mod-lib) | Shared library: base class, menu, config editor, hot reload, patch coordinator |
 | [Mod-Handler](https://github.com/swyf-modding/Mod-Handler) | The in-game **Plugins** tab — turn mods off without leaving a session |
 | [AI-Backend](https://github.com/swyf-modding/AI-Backend) | Routes the game's AI calls to your own LLM |

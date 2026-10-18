@@ -14,33 +14,34 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net48</TargetFramework>
-    <!-- Deliberately not UseWPF. The sources included below are the UI-free half of the launcher, so the
-         test binary needs no WPF assemblies and starts faster. -->
-    <UseWPF>false</UseWPF>
-    <LangVersion>7.3</LangVersion>
+    <!-- net10.0 to match the launcher and the Setup core it references. The project used to be net48
+         because there was no reason to be anything else; the launcher moved, so this follows. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>Launcher.Tests</AssemblyName>
     <RootNamespace>ScamWYF.Launcher.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
+    <Deterministic>true</Deterministic>
     <!-- The default run is offline; -Online swaps which of the two programs is compiled. Both define a
          Main, and an assembly may only have one, so the switch has to be a compile-time choice rather than
-         a runtime argument. tools\test-getmods.ps1 passes it. -->
+         a runtime argument. tools/test-getmods.ps1 and tools/test-getmods.sh pass it. -->
     <Online Condition="'$(Online)' == ''">false</Online>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- The UI-free half of the launcher, named explicitly. Everything excluded here is a view, a dialog,
-         or the window that owns them - all of which need WPF. -->
-    <Compile Include="..\src\**\*.cs"
-             Exclude="..\src\App.xaml.cs;..\src\Dialogs.cs;..\src\MainWindow.xaml.cs;..\src\views\**\*.cs" />
+         or something else that needs Avalonia. Program.cs and Palette.cs are the Avalonia entry point and
+         its resource lookups, so they are excluded for the same reason. -->
+    <Compile Include="../src/**/*.cs"
+             Exclude="../src/App.xaml.cs;../src/Dialogs.cs;../src/MainWindow.xaml.cs;../src/Program.cs;../src/Palette.cs;../src/views/**/*.cs" />
+  </ItemGroup>
 
-    <Reference Include="Mono.Cecil">
-      <HintPath>..\vendor\Mono.Cecil.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-    <Reference Include="System.Web.Extensions" />
-    <Reference Include="System.Web" />
-    <Reference Include="System.IO.Compression" />
+  <ItemGroup>
+    <!-- The setup logic, compiled from the same source the launcher links. It also brings Mono.Cecil in as
+         a transitive package, which is what PluginScanner reads plugin metadata with. -->
+    <ProjectReference Include="../../Setup/src/ScamWYF.Setup.Core/ScamWYF.Setup.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(Online)' != 'true'">

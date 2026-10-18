@@ -1,10 +1,12 @@
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Threading;
+using System.Linq;
+using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 namespace ScamWYF.Launcher.Views
 {
@@ -16,13 +18,13 @@ namespace ScamWYF.Launcher.Views
             Line = line;
             Kind = kind;
             Detail = detail;
-            Brush = (Brush)Application.Current.FindResource(fatal ? "BadBrush" : "WarnBrush");
+            Brush = Palette.Brush(fatal ? Palette.Bad : Palette.Warn);
         }
 
         public string Line { get; private set; }
         public string Kind { get; private set; }
         public string Detail { get; private set; }
-        public Brush Brush { get; private set; }
+        public IBrush Brush { get; private set; }
     }
 
     /// <summary>
@@ -40,8 +42,10 @@ namespace ScamWYF.Launcher.Views
         {
             InitializeComponent();
             Problems.ItemsSource = _problems;
-            Follow.Checked += OnFollowChanged;
-            Follow.Unchecked += OnFollowChanged;
+
+            // Subscribed after InitializeComponent, so the IsChecked="True" in the markup does not
+            // start the poll before there is a Host to poll.
+            Follow.IsCheckedChanged += OnFollowChanged;
         }
 
         public void Reload()
@@ -51,7 +55,7 @@ namespace ScamWYF.Launcher.Views
             if (!File.Exists(path))
             {
                 Headline.Text = "No log yet - it appears after the game has been launched once.";
-                Raw.Clear();
+                Raw.Text = "";
                 _problems.Clear();
                 return;
             }
@@ -69,7 +73,7 @@ namespace ScamWYF.Launcher.Views
 
             Raw.Text = string.Join(Environment.NewLine, lines);
             Raw.CaretIndex = 0;
-            Raw.ScrollToHome();
+            ScrollToHome();
 
             var written = File.GetLastWriteTime(path);
             Headline.Text = path + "   (" + lines.Length + " lines, written " +
@@ -145,13 +149,22 @@ namespace ScamWYF.Launcher.Views
             Host.OpenFolder(Host.Install.Path);
         }
 
+        /// <summary>
+        /// Open the folder the log is in, which is BepInEx rather than the game root.
+        /// </summary>
+        /// <remarks>
+        /// The .NET Framework build said "Open log in notepad" and opened the game root, which was both
+        /// Windows-specific wording and not where the file actually is. This opens the folder that holds
+        /// LogOutput.log, which is the honest version of the same button.
+        /// </remarks>
         private void OnOpenLog(object sender, RoutedEventArgs e)
         {
             var path = Host.Install.LogFile;
+            var folder = Path.GetDirectoryName(path);
 
-            if (File.Exists(path))
+            if (File.Exists(path) && !string.IsNullOrEmpty(folder) && Directory.Exists(folder))
             {
-                Host.OpenFolder(Host.Install.Path);
+                Host.OpenFolder(folder);
                 return;
             }
 
@@ -194,6 +207,19 @@ namespace ScamWYF.Launcher.Views
                 _timer.Stop();
                 _timer = null;
             }
+        }
+
+        /// <summary>
+        /// Put the view back at the top of a freshly loaded log.
+        /// </summary>
+        /// <remarks>
+        /// Avalonia's TextBox has no ScrollToHome, so the internal ScrollViewer is asked instead; it is
+        /// only in the visual tree once the tab has been laid out.
+        /// </remarks>
+        private void ScrollToHome()
+        {
+            var scroll = Raw.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+            if (scroll != null) scroll.ScrollToHome();
         }
     }
 }

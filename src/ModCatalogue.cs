@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Web.Script.Serialization;
+using System.Text.Json;
+using ScamWYF.Setup;
 
 namespace ScamWYF.Launcher
 {
@@ -185,6 +186,9 @@ namespace ScamWYF.Launcher
     /// The API is unauthenticated, which GitHub limits to 60 requests an hour per address. One catalogue
     /// fetch plus one lookup per mod is well inside that; the error is reported as what it is rather
     /// than as a generic failure.
+    ///
+    /// The JSON is read with System.Text.Json, which is in the runtime on every platform. The shape and
+    /// every refusal are unchanged from the .NET Framework build; only the reader is different.
     /// </remarks>
     internal static class ModCatalogue
     {
@@ -197,6 +201,19 @@ namespace ScamWYF.Launcher
 
         private static readonly ModFile LibraryFile =
             new ModFile("ScamWYF.Modding.Core.dll", ModFolder.Core, false);
+
+        /// <summary>
+        /// Characters a catalogue name may not contain.
+        /// </summary>
+        /// <remarks>
+        /// A script or file name from the list is used as a bare name under a folder the folders above
+        /// chose, so any separator is refused. Built from the platform's own separators rather than a
+        /// hard-coded backslash, so this reads the same on Windows and Linux.
+        /// </remarks>
+        private static readonly char[] NameSeparators =
+        {
+            '/', Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar
+        };
 
         private static readonly ModSource[] Known =
         {
@@ -267,71 +284,79 @@ namespace ScamWYF.Launcher
         /// </remarks>
         internal static List<ModSource> ParseCatalogue(string json)
         {
-            object parsed;
+            JsonDocument document;
             try
             {
-                parsed = new JavaScriptSerializer { MaxJsonLength = Http.MaxTextBytes }.DeserializeObject(json);
+                document = JsonDocument.Parse(json);
             }
-            catch (ArgumentException ex)
+            catch (JsonException ex)
             {
                 throw new IOException("The mod list could not be read as JSON. " + ex.Message, ex);
             }
 
-            var root = parsed as Dictionary<string, object>;
-            if (root == null) throw new IOException("The mod list was not in the expected shape");
-
-            object schemaValue;
-            if (!root.TryGetValue("schemaVersion", out schemaValue))
+            using (document)
             {
-                throw new IOException("The mod list names no schema version");
+                var root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    throw new IOException("The mod list was not in the expected shape");
+                }
+
+                if (!root.TryGetProperty("schemaVersion", out _))
+                {
+                    throw new IOException("The mod list names no schema version");
+                }
+
+                var schema = Number(root, "schemaVersion");
+                if (schema != 1)
+                {
+                    throw new IOException("The mod list uses schema version " + schema + ", which this launcher " +
+                                          "does not understand. Update the launcher to read it");
+                }
+
+                if (!root.TryGetProperty("mods", out var raw) || raw.ValueKind != JsonValueKind.Array)
+                {
+                    throw new IOException("The mod list names no mods");
+                }
+
+                var count = raw.GetArrayLength();
+                if (count == 0) throw new IOException("The mod list names no mods");
+                if (count > 64)
+                {
+                    throw new IOException("The mod list names " + count + " mods, which is more than " +
+                                          "the 64 this launcher will consider");
+                }
+
+                var sources = new List<ModSource>(count);
+                var index = 0;
+                foreach (var entry in raw.EnumerateArray())
+                {
+                    sources.Add(ParseEntry(entry, index));
+                    index++;
+                }
+
+                return sources;
             }
-
-            var schema = Number(root, "schemaVersion");
-            if (schema != 1)
-            {
-                throw new IOException("The mod list uses schema version " + schema + ", which this launcher " +
-                                      "does not understand. Update the launcher to read it");
-            }
-
-            object raw;
-            if (!root.TryGetValue("mods", out raw)) throw new IOException("The mod list names no mods");
-
-            var entries = raw as object[];
-            if (entries == null) throw new IOException("The mod list names no mods");
-            if (entries.Length == 0) throw new IOException("The mod list names no mods");
-            if (entries.Length > 64)
-            {
-                throw new IOException("The mod list names " + entries.Length + " mods, which is more than " +
-                                      "the 64 this launcher will consider");
-            }
-
-            var sources = new List<ModSource>();
-            for (var i = 0; i < entries.Length; i++)
-            {
-                sources.Add(ParseEntry(entries[i] as Dictionary<string, object>, i));
-            }
-
-            return sources;
         }
 
         /// <summary>One catalogue entry, checked field by field.</summary>
-        private static ModSource ParseEntry(Dictionary<string, object> entry, int index)
+        private static ModSource ParseEntry(JsonElement entry, int index)
         {
             var where = "entry " + (index + 1);
-            if (entry == null) throw new IOException("The mod list's " + where + " is not an object");
+            if (entry.ValueKind != JsonValueKind.Object)
+            {
+                throw new IOException("The mod list's " + where + " is not an object");
+            }
 
-            object repoValue;
-            var repo = entry.TryGetValue("repo", out repoValue) && repoValue != null
-                ? repoValue.ToString().Trim() : null;
+            var repo = (Text(entry, "repo") ?? "").Trim();
             if (!IsAccountName(repo))
             {
                 throw new IOException("The mod list's " + where + " names no repository");
             }
             where = "mod '" + repo + "'";
 
-            object ownerValue;
-            var owner = entry.TryGetValue("owner", out ownerValue) && ownerValue != null
-                ? ownerValue.ToString().Trim() : DefaultOwner;
+            var ownerValue = Text(entry, "owner");
+            var owner = ownerValue != null ? ownerValue.Trim() : DefaultOwner;
             if (!IsAccountName(owner))
             {
                 throw new IOException("The mod list's " + where + " names no valid owner");
@@ -349,19 +374,21 @@ namespace ScamWYF.Launcher
                 throw new IOException("The mod list's " + where + " has no usable summary");
             }
 
-            object filesValue;
-            if (!entry.TryGetValue("files", out filesValue)) throw new IOException("The mod list's " + where + " names no files");
+            if (!entry.TryGetProperty("files", out var filesValue) || filesValue.ValueKind != JsonValueKind.Array)
+            {
+                throw new IOException("The mod list's " + where + " names no files");
+            }
 
-            var rawFiles = filesValue as object[];
-            if (rawFiles == null || rawFiles.Length == 0 || rawFiles.Length > 16)
+            var fileCount = filesValue.GetArrayLength();
+            if (fileCount == 0 || fileCount > 16)
             {
                 throw new IOException("The mod list's " + where + " names no files");
             }
 
             var files = new List<ModFile>();
-            foreach (var rawFile in rawFiles)
+            foreach (var rawFile in filesValue.EnumerateArray())
             {
-                files.Add(ParseFile(rawFile as Dictionary<string, object>, where));
+                files.Add(ParseFile(rawFile, where));
             }
 
             return new ModSource(repo, displayName.Trim(), summary.Trim(), files.ToArray(), owner,
@@ -375,35 +402,47 @@ namespace ScamWYF.Launcher
         /// Capped at four: these are prompts a person answers one by one after installing, and a mod
         /// with more setup steps than that has a setup problem no launcher dialog will fix.
         /// </remarks>
-        private static PostInstallStep[] ParsePostInstall(Dictionary<string, object> entry, string where)
+        private static PostInstallStep[] ParsePostInstall(JsonElement entry, string where)
         {
-            object raw;
-            if (!entry.TryGetValue("postInstall", out raw) || raw == null) return new PostInstallStep[0];
+            if (!entry.TryGetProperty("postInstall", out var raw) || raw.ValueKind == JsonValueKind.Null)
+            {
+                return new PostInstallStep[0];
+            }
 
-            var rawSteps = raw as object[];
-            if (rawSteps == null || rawSteps.Length == 0 || rawSteps.Length > 4)
+            if (raw.ValueKind != JsonValueKind.Array)
+            {
+                throw new IOException("The mod list's " + where + " names no usable setup steps");
+            }
+
+            var count = raw.GetArrayLength();
+            if (count == 0 || count > 4)
             {
                 throw new IOException("The mod list's " + where + " names no usable setup steps");
             }
 
             var steps = new List<PostInstallStep>();
-            for (var i = 0; i < rawSteps.Length; i++)
+            var number = 1;
+            foreach (var rawStep in raw.EnumerateArray())
             {
-                steps.Add(ParsePostInstallStep(rawSteps[i] as Dictionary<string, object>, where, i + 1));
+                steps.Add(ParsePostInstallStep(rawStep, where, number));
+                number++;
             }
 
             return steps.ToArray();
         }
 
         /// <summary>One setup step: which script in the download, and what the prompt says about it.</summary>
-        private static PostInstallStep ParsePostInstallStep(Dictionary<string, object> step, string where, int number)
+        private static PostInstallStep ParsePostInstallStep(JsonElement step, string where, int number)
         {
             var which = where + " setup step " + number;
-            if (step == null) throw new IOException("The mod list's " + which + " is not an object");
+            if (step.ValueKind != JsonValueKind.Object)
+            {
+                throw new IOException("The mod list's " + which + " is not an object");
+            }
 
             var script = Text(step, "script");
             if (string.IsNullOrWhiteSpace(script) || script.Trim().Length > 100 ||
-                script.IndexOf('/') >= 0 || script.IndexOf('\\') >= 0 ||
+                script.IndexOfAny(NameSeparators) >= 0 ||
                 !script.Trim().EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
             {
                 throw new IOException("The mod list's " + which + " names no script this launcher will run");
@@ -424,13 +463,16 @@ namespace ScamWYF.Launcher
         /// parent references, and a .dll suffix, so a catalogue entry can never route a download
         /// somewhere the folders above did not intend.
         /// </remarks>
-        private static ModFile ParseFile(Dictionary<string, object> file, string where)
+        private static ModFile ParseFile(JsonElement file, string where)
         {
-            if (file == null) throw new IOException("The mod list's " + where + " names a file that is not an object");
+            if (file.ValueKind != JsonValueKind.Object)
+            {
+                throw new IOException("The mod list's " + where + " names a file that is not an object");
+            }
 
             var name = Text(file, "fileName");
             if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 100 ||
-                name.IndexOf('/') >= 0 || name.IndexOf('\\') >= 0 ||
+                name.IndexOfAny(NameSeparators) >= 0 ||
                 name.Trim() == "." || name.Trim() == ".." ||
                 !name.Trim().EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
             {
@@ -453,14 +495,14 @@ namespace ScamWYF.Launcher
                                       " somewhere other than plugins or core");
             }
 
-            object flag;
-            if (!file.TryGetValue("expectsPluginAttribute", out flag) || !(flag is bool))
+            if (!file.TryGetProperty("expectsPluginAttribute", out var flag) ||
+                (flag.ValueKind != JsonValueKind.True && flag.ValueKind != JsonValueKind.False))
             {
                 throw new IOException("The mod list's " + where + " does not say whether " +
                                       name.Trim() + " is a plugin");
             }
 
-            return new ModFile(name.Trim(), folder, (bool)flag);
+            return new ModFile(name.Trim(), folder, flag.ValueKind == JsonValueKind.True);
         }
 
         /// <summary>A GitHub account or repository name: letters, digits, dot, dash, underscore.</summary>
@@ -484,56 +526,60 @@ namespace ScamWYF.Launcher
             var url = "https://api.github.com/repos/" + source.Owner + "/" + source.Repo + "/releases/latest";
             var json = Http.GetText(url);
 
-            object parsed;
+            JsonDocument document;
             try
             {
-                parsed = new JavaScriptSerializer { MaxJsonLength = Http.MaxTextBytes }.DeserializeObject(json);
+                document = JsonDocument.Parse(json);
             }
-            catch (ArgumentException ex)
+            catch (JsonException ex)
             {
                 throw new IOException("GitHub's reply could not be read as JSON, which usually means a " +
                                       "rate limit page rather than a release. " + ex.Message, ex);
             }
 
-            var root = parsed as Dictionary<string, object>;
-            if (root == null) throw new IOException("GitHub's reply was not in the expected shape");
-
-            var tag = Text(root, "tag_name");
-            var page = Text(root, "html_url");
-
-            var package = FindPackage(root);
-            if (package == null)
+            using (document)
             {
-                throw new IOException(source.Repo + " has a release (" + tag + ") but no downloadable zip in it. " +
-                                      "Nothing can be installed from it");
-            }
+                var root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    throw new IOException("GitHub's reply was not in the expected shape");
+                }
 
-            return new ReleaseInfo(source, tag, page, package);
+                var tag = Text(root, "tag_name");
+                var page = Text(root, "html_url");
+
+                var package = FindPackage(root);
+                if (package == null)
+                {
+                    throw new IOException(source.Repo + " has a release (" + tag + ") but no downloadable zip in it. " +
+                                          "Nothing can be installed from it");
+                }
+
+                return new ReleaseInfo(source, tag, page, package);
+            }
         }
 
         /// <summary>The release's zip. A release with none cannot be installed from.</summary>
-        private static ReleaseAsset FindPackage(Dictionary<string, object> root)
+        private static ReleaseAsset FindPackage(JsonElement root)
         {
-            object raw;
-            if (!root.TryGetValue("assets", out raw)) return null;
-
-            var assets = raw as object[];
-            if (assets == null) return null;
-
-            foreach (var entry in assets)
+            if (!root.TryGetProperty("assets", out var raw) || raw.ValueKind != JsonValueKind.Array)
             {
-                var asset = entry as Dictionary<string, object>;
-                if (asset == null) continue;
+                return null;
+            }
 
-                var name = Text(asset, "name");
+            foreach (var entry in raw.EnumerateArray())
+            {
+                if (entry.ValueKind != JsonValueKind.Object) continue;
+
+                var name = Text(entry, "name");
                 if (string.IsNullOrEmpty(name)) continue;
 
                 if (!name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) continue;
 
-                var url = Text(asset, "browser_download_url");
+                var url = Text(entry, "browser_download_url");
                 if (!Http.IsAcceptable(url)) continue;
 
-                return new ReleaseAsset(name, Number(asset, "size"), url, Digest(asset, "digest"));
+                return new ReleaseAsset(name, Number(entry, "size"), url, Digest(entry, "digest"));
             }
 
             return null;
@@ -546,7 +592,7 @@ namespace ScamWYF.Launcher
         /// Returned as bare hex so it can be compared with what was actually downloaded, which is hashed
         /// locally. An unrecognised prefix yields null rather than a hash that would never match.
         /// </remarks>
-        private static string Digest(Dictionary<string, object> asset, string key)
+        private static string Digest(JsonElement asset, string key)
         {
             var raw = Text(asset, key);
             if (string.IsNullOrEmpty(raw)) return null;
@@ -561,25 +607,39 @@ namespace ScamWYF.Launcher
             return hex.Length == 64 ? hex.ToLowerInvariant() : null;
         }
 
-        private static string Text(Dictionary<string, object> from, string key)
+        private static string Text(JsonElement from, string key)
         {
-            object value;
-            return from.TryGetValue(key, out value) && value != null ? value.ToString() : null;
+            if (!from.TryGetProperty(key, out var value)) return null;
+
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.String:
+                    return value.GetString();
+                case JsonValueKind.Number:
+                    return value.GetRawText();
+                case JsonValueKind.True:
+                    return "True";
+                case JsonValueKind.False:
+                    return "False";
+                default:
+                    return null;
+            }
         }
 
-        private static long Number(Dictionary<string, object> from, string key)
+        private static long Number(JsonElement from, string key)
         {
-            object value;
-            if (!from.TryGetValue(key, out value) || value == null) return 0;
+            if (!from.TryGetProperty(key, out var value)) return 0;
 
-            try
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number)) return number;
+
+            // A numeric field sent as a string still counts; the old reader coerced it with Convert.ToInt64.
+            if (value.ValueKind == JsonValueKind.String &&
+                long.TryParse(value.GetString(), out var parsed))
             {
-                return Convert.ToInt64(value);
+                return parsed;
             }
-            catch (Exception)
-            {
-                return 0;
-            }
+
+            return 0;
         }
 
         /// <summary>

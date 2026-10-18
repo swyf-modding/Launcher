@@ -29,7 +29,7 @@ namespace ScamWYF.Launcher
             if (string.IsNullOrEmpty(bepinexCore)) throw new ArgumentNullException("bepinexCore");
 
             var root = Directory.GetParent(bepinexCore);
-            if (root == null) throw new ArgumentException("BepInEx\\core has no parent folder.", "bepinexCore");
+            if (root == null) throw new ArgumentException("the BepInEx core folder has no parent folder.", "bepinexCore");
 
             _plugins = Path.Combine(root.FullName, "plugins");
             _disabled = Path.Combine(root.FullName, "plugins_disabled");

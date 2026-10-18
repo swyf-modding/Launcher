@@ -2,10 +2,9 @@ using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Media;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Media;
 
 namespace ScamWYF.Launcher.Views
 {
@@ -37,13 +36,13 @@ namespace ScamWYF.Launcher.Views
             set { if (_note != value) { _note = value; OnChanged(); } }
         }
 
-        public Brush Brush
+        public IBrush Brush
         {
             get
             {
-                if (!Entry.Enabled) return (Brush)Application.Current.FindResource("MutedBrush");
-                if (Entry.LoadError != null) return (Brush)Application.Current.FindResource("WarnBrush");
-                return (Brush)Application.Current.FindResource("TextBrush");
+                if (!Entry.Enabled) return Palette.Brush(Palette.Muted);
+                if (Entry.LoadError != null) return Palette.Brush(Palette.Warn);
+                return Palette.Brush(Palette.Text);
             }
         }
 
@@ -61,7 +60,7 @@ namespace ScamWYF.Launcher.Views
     /// </summary>
     /// <remarks>
     /// A mod with no [BepInPlugin] is listed but marked, not hidden. The shared library is a dll in
-    /// plugins\ with no attribute, and someone seeing "unrecognised" for it would reasonably conclude
+    /// plugins with no attribute, and someone seeing "unrecognised" for it would reasonably conclude
     /// something was broken. Saying why it is harmless is more useful than hiding it.
     ///
     /// Deleting asks for confirmation and has no undo. That asymmetry is deliberate: a delete that
@@ -84,7 +83,7 @@ namespace ScamWYF.Launcher.Views
         {
             _rows.Clear();
 
-            if (!Host.Install.CanManageMods)
+            if (!Host.Install.HasBepInEx)
             {
                 Summary.Text = "No BepInEx install found, so there is nothing to list.";
                 UpdateButtons();
@@ -116,12 +115,12 @@ namespace ScamWYF.Launcher.Views
             UpdateButtons();
         }
 
-        private void OnDoubleClick(object sender, MouseButtonEventArgs e)
+        private void OnDoubleClick(object sender, TappedEventArgs e)
         {
             Toggle();
         }
 
-        private void OnRescan(object sender, RoutedEventArgs e) { Reload(); }
+        private void OnRescan(object sender, Avalonia.Interactivity.RoutedEventArgs e) { Reload(); }
 
         /// <summary>
         /// Open the selected mod's config file for editing.
@@ -131,7 +130,7 @@ namespace ScamWYF.Launcher.Views
         /// identifies it here, so there is nothing to guess - and nothing that would let this open an
         /// arbitrary file.
         /// </remarks>
-        private void OnConfig(object sender, RoutedEventArgs e)
+        private async void OnConfig(object sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             var row = Selected;
             if (row == null) return;
@@ -156,25 +155,32 @@ namespace ScamWYF.Launcher.Views
 
             var window = new ConfigWindow(config, row.Name);
 
-            // Owner, so it is modal to this window and cannot be sent behind it - which is what makes
-            // "the file changed on disk" a thing that can only happen because the game wrote it.
-            window.Owner = Window.GetWindow(this);
-            window.ShowDialog();
+            // Modal to this window, so it cannot be sent behind it - which is what makes "the file
+            // changed on disk" a thing that can only happen because the game wrote it.
+            var owner = TopLevel.GetTopLevel(this) as Window;
+            if (owner == null)
+            {
+                // No owner to be modal to; there is nothing to report a save to either.
+                window.Show();
+                return;
+            }
 
-            if (window.DialogResult == true)
+            var saved = await window.ShowDialog<bool>(owner);
+
+            if (saved)
             {
                 Host.Status("Saved " + Path.GetFileName(path) + ". Changes apply the next time the game starts.", true);
             }
         }
 
-        private void OnOpenPlugins(object sender, RoutedEventArgs e)
+        private void OnOpenPlugins(object sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
-            Host.OpenFolder(Host.Install.PluginsFolder);
+            Host.OpenFolder(Host.Mods.PluginsFolder);
         }
 
-        private void OnOpenDisabled(object sender, RoutedEventArgs e)
+        private void OnOpenDisabled(object sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
-            Host.OpenFolder(Host.Install.PluginsFolder.Replace("plugins", "plugins_disabled"));
+            Host.OpenFolder(Host.Mods.DisabledFolder);
         }
 
         private void UpdateButtons()
@@ -250,9 +256,9 @@ namespace ScamWYF.Launcher.Views
             Host.RefreshModViews();
         }
 
-        private void OnToggle(object sender, RoutedEventArgs e) { Toggle(); }
+        private void OnToggle(object sender, Avalonia.Interactivity.RoutedEventArgs e) { Toggle(); }
 
-        private void OnDelete(object sender, RoutedEventArgs e)
+        private async void OnDelete(object sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             var row = Selected;
             if (row == null || Host.Busy) return;
@@ -260,7 +266,7 @@ namespace ScamWYF.Launcher.Views
             var entry = row.Entry;
             var extra = entry.Enabled ? "\n\nIt is enabled, so deleting it removes it for good." : "";
 
-            if (!Dialogs.Confirm("Delete mod",
+            if (!await Dialogs.ConfirmAsync("Delete mod",
                     "Delete " + entry.DisplayName + "?\n\n" + entry.Path + extra +
                     "\n\nThis cannot be undone. If you only want to stop it loading, disable it instead.",
                     "Delete", DialogSeverity.Warning))

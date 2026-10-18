@@ -1,8 +1,11 @@
 using System;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Documents;
-using System.Windows.Media;
+using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Controls.Primitives;
+using Avalonia.Layout;
+using Avalonia.Media;
 
 namespace ScamWYF.Launcher
 {
@@ -20,22 +23,27 @@ namespace ScamWYF.Launcher
     /// </summary>
     /// <remarks>
     /// WPF's MessageBox is a Win32 dialog and cannot be themed, so a dark window would put a light grey
-    /// box in the middle of itself. These are built from the same styles as the rest of the UI instead.
+    /// box in the middle of itself. Avalonia has no MessageBox at all, so the same reasoning applies for
+    /// the same reason: these are built from the same styles as the rest of the UI.
     ///
     /// Written out in code rather than XAML because the body text varies and a dialog that has to be
-    /// assembled from parts at runtime does not benefit from markup - and because MessageBox.Show
-    /// returned in one line, which made the call sites read well and is worth keeping.
+    /// assembled from parts at runtime does not benefit from markup.
     ///
-    /// <see cref="Confirm"/> defaults to Cancel being the default button. Three of its callers ask
+    /// They are asynchronous now, and that is the one real change from the .NET Framework version. A
+    /// modal dialog blocks the message loop in WPF, so <c>ShowDialog</c> could return a bool; Avalonia's
+    /// <c>ShowDialog</c> is a task, and blocking on it from the UI thread would deadlock. So every caller
+    /// awaits instead, and the call sites read as <c>await Dialogs.ConfirmAsync(...)</c>.
+    ///
+    /// <see cref="ConfirmAsync"/> defaults to Cancel being the default button. Three of its callers ask
     /// "replace these files, there is no undo", and Enter meaning yes on those is how files get lost.
     /// </remarks>
     internal static class Dialogs
     {
         /// <summary>Ask a yes/no question. Returns true only if the accept button was chosen.</summary>
-        public static bool Confirm(string title, string message, string acceptText,
-                                   DialogSeverity severity = DialogSeverity.Question)
+        public static Task<bool> ConfirmAsync(string title, string message, string acceptText,
+                                              DialogSeverity severity = DialogSeverity.Question)
         {
-            return Show(title, message, severity, acceptText, "Cancel", defaultAccept: false);
+            return ShowAsync(title, message, severity, acceptText, "Cancel", defaultAccept: false);
         }
 
         /// <summary>
@@ -45,42 +53,28 @@ namespace ScamWYF.Launcher
         /// "Cancel" would be the wrong word here: declining one setup step offers the next one, so the
         /// button says Skip. Still defaults away from running, like every other confirmation.
         /// </remarks>
-        public static bool ConfirmSkippable(string title, string message, string acceptText,
-                                            DialogSeverity severity = DialogSeverity.Question)
+        public static Task<bool> ConfirmSkippableAsync(string title, string message, string acceptText,
+                                                       DialogSeverity severity = DialogSeverity.Question)
         {
-            return Show(title, message, severity, acceptText, "Skip", defaultAccept: false);
+            return ShowAsync(title, message, severity, acceptText, "Skip", defaultAccept: false);
         }
 
         /// <summary>Say something that needs acknowledging.</summary>
-        public static void Inform(string title, string message)
+        public static Task InformAsync(string title, string message)
         {
-            Show(title, message, DialogSeverity.Information, "OK", null, defaultAccept: true);
+            return ShowAsync(title, message, DialogSeverity.Information, "OK", null, defaultAccept: true);
         }
 
         /// <summary>Report a failure.</summary>
-        public static void Error(string title, string message)
+        public static Task ErrorAsync(string title, string message)
         {
-            Show(title, message, DialogSeverity.Error, "OK", null, defaultAccept: true);
+            return ShowAsync(title, message, DialogSeverity.Error, "OK", null, defaultAccept: true);
         }
 
-private static bool Show(string title, string message, DialogSeverity severity, string acceptText,
-                                 string cancelText, bool defaultAccept)
+        private static async Task<bool> ShowAsync(string title, string message, DialogSeverity severity,
+                                                  string acceptText, string cancelText, bool defaultAccept)
         {
-            // Marshalled, because a Window has to be created on the dispatcher thread and this is the
-            // one place every confirmation funnels through. Every current caller is already on it, but
-            // the alternative is a modal dialog that throws the moment a future caller is not - and a
-            // dialog is exactly what gets called from a failure path, which is the likeliest place for
-            // that to go wrong.
-            var dispatcher = Application.Current.Dispatcher;
-            if (!dispatcher.CheckAccess())
-            {
-                var answer = false;
-                dispatcher.Invoke(new Action(delegate
-                {
-                    answer = Show(title, message, severity, acceptText, cancelText, defaultAccept);
-                }));
-                return answer;
-            }
+            var answer = false;
 
             var window = new Window
             {
@@ -88,23 +82,13 @@ private static bool Show(string title, string message, DialogSeverity severity, 
                 Width = 520,
                 SizeToContent = SizeToContent.Height,
                 MinHeight = 170,
-                ResizeMode = ResizeMode.NoResize,
+                CanResize = false,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 ShowInTaskbar = false,
-                Background = (Brush)Application.Current.FindResource("SurfaceBrush")
+                Background = Palette.Brush(Palette.Surface),
+                FontSize = 12,
+                Foreground = Palette.Brush(Palette.Text)
             };
-
-            // Attached properties, so set after construction rather than in the initialiser - the
-            // initialiser form only accepts instance properties, and these are static setters.
-            TextElement.SetForeground(window, (Brush)Application.Current.FindResource("TextBrush"));
-            TextElement.SetFontFamily(window, new FontFamily("Segoe UI"));
-            TextElement.SetFontSize(window, 12d);
-
-            if (Application.Current.Windows.Count > 0 &&
-                Application.Current.Windows[Application.Current.Windows.Count - 1].IsActive)
-            {
-                window.Owner = Application.Current.Windows[Application.Current.Windows.Count - 1];
-            }
 
             var accept = MakeButton(acceptText, isDefault: defaultAccept, isCancel: false,
                                     accent: severity == DialogSeverity.Error);
@@ -112,8 +96,8 @@ private static bool Show(string title, string message, DialogSeverity severity, 
                 ? null
                 : MakeButton(cancelText, isDefault: !defaultAccept, isCancel: true, accent: false);
 
-            accept.Click += delegate { window.DialogResult = true; };
-            if (cancel != null) cancel.Click += delegate { window.DialogResult = false; };
+            accept.Click += delegate { answer = true; window.Close(); };
+            if (cancel != null) cancel.Click += delegate { answer = false; window.Close(); };
 
             var buttons = new StackPanel
             {
@@ -131,7 +115,7 @@ private static bool Show(string title, string message, DialogSeverity severity, 
             {
                 Text = message ?? "",
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = (Brush)Application.Current.FindResource("TextBrush")
+                Foreground = Palette.Brush(Palette.Text)
             };
 
             // Scrolled rather than capped: the install plan is the thing the user is supposed to read
@@ -156,7 +140,7 @@ private static bool Show(string title, string message, DialogSeverity severity, 
                 grid.Children.Add(glyph);
             }
 
-            var right = new StackPanel { Margin = new Thickness(0, 0, 0, 0) };
+            var right = new StackPanel();
             right.Children.Add(body);
             right.Children.Add(buttons);
             Grid.SetColumn(right, 1);
@@ -169,13 +153,26 @@ private static bool Show(string title, string message, DialogSeverity severity, 
             };
 
             window.Content = padding;
-            window.Loaded += delegate
+            window.Opened += delegate
             {
                 // Focus the default rather than nothing, so Enter works before the user clicks anything.
                 (defaultAccept ? accept : cancel ?? accept).Focus();
             };
 
-            return window.ShowDialog() == true;
+            var owner = (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+            if (owner != null && owner != window && owner.IsVisible)
+            {
+                await window.ShowDialog(owner);
+                return answer;
+            }
+
+            // No owner to be modal to - a dialog raised before the main window exists, or after it has
+            // closed. Shown non-modally but still awaited, so a caller that needs an answer still gets one.
+            var closed = new TaskCompletionSource<bool>();
+            window.Closed += delegate { closed.TrySetResult(true); };
+            window.Show();
+            await closed.Task;
+            return answer;
         }
 
         private static Button MakeButton(string text, bool isDefault, bool isCancel, bool accent)
@@ -186,11 +183,11 @@ private static bool Show(string title, string message, DialogSeverity severity, 
                 MinWidth = 96,
                 Margin = new Thickness(8, 0, 0, 0),
                 IsDefault = isDefault,
-                // Escape closes the dialog as "no". On the OK-only dialogs there is no cancel button, and
-                // setting this on the OK button would let Escape close without setting DialogResult - which
-                // reads as "declined" and is wrong when there was nothing to decline.
+                // Escape closes the dialog as "no". On the OK-only dialogs there is no cancel button, so
+                // the OK button is not marked cancel either - that would let Escape close without an
+                // answer, which reads as "declined" and is wrong when there was nothing to decline.
                 IsCancel = isCancel,
-                Style = (Style)Application.Current.FindResource(accent ? "AccentButton" : "FlatButton")
+                Theme = Palette.ControlTheme(accent ? "AccentButton" : "FlatButton")
             };
         }
 
@@ -203,19 +200,19 @@ private static bool Show(string title, string message, DialogSeverity severity, 
             {
                 case DialogSeverity.Error:
                     character = "✕";
-                    key = "BadBrush";
+                    key = Palette.Bad;
                     break;
                 case DialogSeverity.Warning:
                     character = "!";
-                    key = "WarnBrush";
+                    key = Palette.Warn;
                     break;
                 case DialogSeverity.Question:
                     character = "?";
-                    key = "AccentBrush";
+                    key = Palette.Accent;
                     break;
                 default:
                     character = "i";
-                    key = "MutedBrush";
+                    key = Palette.Muted;
                     break;
             }
 
@@ -223,10 +220,9 @@ private static bool Show(string title, string message, DialogSeverity severity, 
             {
                 Text = character,
                 FontSize = 18,
-                FontWeight = FontWeights.Bold,
-                Foreground = (Brush)Application.Current.FindResource(key),
-                HorizontalAlignment = HorizontalAlignment.Left,
-                Margin = new Thickness(0, 0, 0, 0)
+                FontWeight = FontWeight.Bold,
+                Foreground = Palette.Brush(key),
+                HorizontalAlignment = HorizontalAlignment.Left
             };
         }
     }

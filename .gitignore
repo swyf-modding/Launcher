@@ -1,17 +1,14 @@
 # Build output
 bin/
-
-# Where CI puts its Setup checkout (see .github\workflows\ci.yml). Ignored because it is a whole second
-# repository, and committing one by accident is a 12 MB diff nobody reviews.
-setup-src/
-
-# Generated assembly attributes, written by build.ps1 from the git tag. Deliberately not committed:
-# a checked-in copy is the version drift this replaced.
 obj/
 
-# vendor\Mono.Cecil.dll is deliberately NOT ignored: the launcher stages its own Cecil so a build
-# works with no game installed, and pinning the version means a release cannot ship against a
-# different one than it was tested with. See vendor\README.md.
+# Published single-file builds, from build.sh / build.ps1. One self-contained executable per platform,
+# tens of megabytes each, and reproducible from the commit - nothing here belongs in the repository.
+dist/
+
+# vendor\Mono.Cecil.dll is deliberately NOT ignored. It is no longer referenced by the launcher - Cecil
+# is a NuGet package pulled in by ScamWYF.Setup.Core now - but the pinned copy is kept for the record and
+# is still excluded from ignore rules. See vendor\README.md.
 
 # BepInEx install output, if someone runs the tool from a clone next to the game
 BepInEx/

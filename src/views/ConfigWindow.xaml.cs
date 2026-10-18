@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Media;
+using Avalonia;
+using Avalonia.Automation;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Layout;
+using Avalonia.Media;
 
 namespace ScamWYF.Launcher.Views
 {
@@ -19,6 +21,10 @@ namespace ScamWYF.Launcher.Views
     ///
     /// Saving rewrites only the lines whose values changed, so the documentation survives. See
     /// <see cref="ModConfigFile"/> for why round-tripping rather than regenerating is the whole design.
+    ///
+    /// The editor controls are built in code and pick their look from the same styles the rest of the
+    /// window uses: the setting cards, the section headings and the choice chips are the launcher's own
+    /// classes rather than locally invented ones.
     /// </remarks>
     public partial class ConfigWindow : Window
     {
@@ -52,11 +58,9 @@ namespace ScamWYF.Launcher.Views
         {
             if (_entries.Count == 0)
             {
-                Settings.Children.Add(new TextBlock
-                {
-                    Text = "This config file has no settings this tool recognises. It is left exactly as it is.",
-                    Style = (Style)FindResource("SettingDoc")
-                });
+                Settings.Children.Add(Text(
+                    "This config file has no settings this tool recognises. It is left exactly as it is.",
+                    "settingDoc"));
                 return;
             }
 
@@ -72,11 +76,7 @@ namespace ScamWYF.Launcher.Views
 
                 if (inSection.Count == 0) continue;
 
-                Settings.Children.Add(new TextBlock
-                {
-                    Text = section,
-                    Style = (Style)FindResource("SectionHeading")
-                });
+                Settings.Children.Add(Text(section, "sectionHeading"));
 
                 foreach (var entry in inSection) Settings.Children.Add(BuildCard(entry));
             }
@@ -84,7 +84,9 @@ namespace ScamWYF.Launcher.Views
 
         private Border BuildCard(ModConfigEntry entry)
         {
-            var card = new Border { Style = (Style)FindResource("SettingCard") };
+            var card = new Border();
+            card.Classes.Add("card");
+
             var panel = new StackPanel();
 
             // The mod's own words first: what this setting is for is not something to be inferred.
@@ -93,18 +95,18 @@ namespace ScamWYF.Launcher.Views
                 foreach (var comment in entry.Comments)
                 {
                     if (comment.Length == 0) continue;
-                    panel.Children.Add(new TextBlock { Text = comment, Style = (Style)FindResource("SettingDoc") });
+                    panel.Children.Add(Text(comment, "settingDoc"));
                 }
             }
 
-            panel.Children.Add(new TextBlock { Text = entry.Key, Style = (Style)FindResource("SettingName") });
+            panel.Children.Add(Text(entry.Key, "settingName"));
 
             var row = new Grid();
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            var hint = new TextBlock { Style = (Style)FindResource("SettingHint"), Margin = new Thickness(0, 0, 12, 0) };
-            hint.Text = DescribeType(entry);
+            var hint = Text(DescribeType(entry), "settingHint");
+            hint.Margin = new Thickness(0, 0, 12, 0);
             hint.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(hint, 0);
             row.Children.Add(hint);
@@ -122,16 +124,15 @@ namespace ScamWYF.Launcher.Views
             return card;
         }
 
-        private FrameworkElement BuildEditor(ModConfigEntry entry)
+        private Control BuildEditor(ModConfigEntry entry)
         {
-            FrameworkElement editor;
+            Control editor;
 
             // A yes/no setting is a checkbox, because that is what it is and it cannot be got wrong.
             if (entry.IsBoolean)
             {
                 var box = new CheckBox { IsChecked = string.Equals(entry.Value, "true", StringComparison.OrdinalIgnoreCase) };
-                box.Checked += delegate { entry.Value = "true"; Changed(); };
-                box.Unchecked += delegate { entry.Value = "false"; Changed(); };
+                box.IsCheckedChanged += delegate { entry.Value = box.IsChecked == true ? "true" : "false"; Changed(); };
                 editor = box;
             }
             // A short list of accepted values is a row of chips. The list is only shown when it is short
@@ -145,7 +146,7 @@ namespace ScamWYF.Launcher.Views
                     var chip = new ToggleButton
                     {
                         Content = allowed,
-                        Style = (Style)FindResource("ChoiceChip"),
+                        Theme = Palette.ControlTheme("ChoiceChip"),
                         IsChecked = string.Equals(allowed, entry.Value, StringComparison.OrdinalIgnoreCase)
                     };
 
@@ -166,7 +167,7 @@ namespace ScamWYF.Launcher.Views
             // it rather than a label bound to it, so without this a screen reader announces an unnamed
             // checkbox or text box and the person editing their AI backend has no idea which setting
             // they are on.
-            System.Windows.Automation.AutomationProperties.SetName(editor, entry.Key);
+            AutomationProperties.SetName(editor, entry.Key);
 
             return editor;
         }
@@ -194,19 +195,19 @@ namespace ScamWYF.Launcher.Views
             RevertButton.IsEnabled = changes.Count > 0;
 
             // A changed setting is outlined, so scrolling a long file shows what has been touched.
-            var accent = (Brush)FindResource("AccentBrush");
-            var plain = (Brush)FindResource("BorderBrush");
+            var accent = Palette.Brush(Palette.Accent);
+            var plain = Palette.Brush(Palette.Border);
             foreach (var pair in _cards) pair.Key.BorderBrush = pair.Value.Modified ? accent : plain;
 
             Status.Text = changes.Count == 0
                 ? "Nothing changed yet."
                 : changes.Count + " setting(s) changed. They take effect the next time the game starts.";
 
-            Status.Foreground = (Brush)FindResource(changes.Count == 0 ? "MutedBrush" : "AccentBrush");
+            Status.Foreground = Palette.Brush(changes.Count == 0 ? Palette.Muted : Palette.Accent);
         }
 
         /// <summary>Put every value back the way the file had it.</summary>
-        private void OnRevert(object sender, RoutedEventArgs e)
+        private void OnRevert(object sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             foreach (var entry in _entries) entry.Value = entry.OriginalValue;
 
@@ -216,12 +217,12 @@ namespace ScamWYF.Launcher.Views
             RefreshStatus();
         }
 
-        private void OnCancel(object sender, RoutedEventArgs e)
+        private void OnCancel(object sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
-            DialogResult = false;
+            Close(false);
         }
 
-        private void OnSave(object sender, RoutedEventArgs e)
+        private async void OnSave(object sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             // BepInEx writes a plugin's config as the game shuts down. Saving over it while the game is
             // running works, and then gets silently overwritten a moment later, so it is refused here
@@ -229,7 +230,7 @@ namespace ScamWYF.Launcher.Views
             string running;
             if (ModManager.GameRunning(out running))
             {
-                Dialogs.Error("Close the game first",
+                await Dialogs.ErrorAsync("Close the game first",
                     "The game is running (" + running + ").\n\n" +
                     "BepInEx saves a mod's config as it shuts down, so anything written now would be " +
                     "overwritten a moment later.");
@@ -243,7 +244,7 @@ namespace ScamWYF.Launcher.Views
                 var problem = _config.ProblemWith(entry, entry.Value);
                 if (problem == null) continue;
 
-                Dialogs.Error("That value will not be accepted",
+                await Dialogs.ErrorAsync("That value will not be accepted",
                     entry.Key + "\n\n" + problem + "\n\nNothing was written.");
                 return;
             }
@@ -254,11 +255,19 @@ namespace ScamWYF.Launcher.Views
             }
             catch (Exception ex)
             {
-                Dialogs.Error("Could not write the config", ex.Message);
+                await Dialogs.ErrorAsync("Could not write the config", ex.Message);
                 return;
             }
 
-            DialogResult = true;
+            Close(true);
+        }
+
+        /// <summary>A TextBlock with one of the launcher's text classes on it.</summary>
+        private static TextBlock Text(string content, string className)
+        {
+            var block = new TextBlock { Text = content };
+            block.Classes.Add(className);
+            return block;
         }
     }
 }

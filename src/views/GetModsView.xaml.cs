@@ -5,8 +5,9 @@ using System.ComponentModel;
 using System.IO;
 using System.Text;
 using System.Threading;
-using System.Windows;
-using System.Windows.Controls;
+using System.Threading.Tasks;
+using Avalonia.Controls;
+using Avalonia.Threading;
 
 namespace ScamWYF.Launcher.Views
 {
@@ -69,6 +70,11 @@ namespace ScamWYF.Launcher.Views
     /// Nothing is installed without a confirmation that names the files, the version read out of each
     /// file, the folder each is going into, and anything it would replace. The version in the URL is not
     /// shown as the version, because the version inside the file is the one that will actually load.
+    ///
+    /// The dialogs are asynchronous here, which is the one shape that changed from the .NET Framework
+    /// build: Avalonia's ShowDialog is a task, so every step that asks a question is awaited rather than
+    /// blocking. The network work still runs on a background thread, and the confirmation that follows it
+    /// runs back on the UI thread.
     /// </remarks>
     public partial class GetModsView : UserControl
     {
@@ -133,13 +139,13 @@ namespace ScamWYF.Launcher.Views
             UpdateButtons();
         }
 
-        private void OnCheck(object sender, RoutedEventArgs e) { CheckForUpdates(); }
-        private void OnInstall(object sender, RoutedEventArgs e) { InstallSelected(); }
-        private void OnFromUrl(object sender, RoutedEventArgs e) { InstallFromUrl(); }
+        private void OnCheck(object sender, Avalonia.Interactivity.RoutedEventArgs e) { CheckForUpdates(); }
+        private void OnInstall(object sender, Avalonia.Interactivity.RoutedEventArgs e) { InstallSelected(); }
+        private void OnFromUrl(object sender, Avalonia.Interactivity.RoutedEventArgs e) { InstallFromUrl(); }
 
         private void CheckForUpdates()
         {
-            if (!Host.Install.CanManageMods)
+            if (!Host.Install.HasBepInEx)
             {
                 Summary.Text = "No BepInEx install found, so there is nowhere to put a mod. Run the Setup tab first.";
                 return;
@@ -229,7 +235,7 @@ namespace ScamWYF.Launcher.Views
             string running;
             if (ModManager.GameRunning(out running))
             {
-                Dialogs.Inform("Close the game first",
+                ShowInform("Close the game first",
                     "The game is running (" + running + ").\n\nBepInEx keeps plugin files locked until it " +
                     "exits, so close the game first.");
                 return;
@@ -247,11 +253,12 @@ namespace ScamWYF.Launcher.Views
                     folder = fetched.WorkingFolder;
 
                     var plan = ModInstaller.Plan(release, fetched.UnpackedFolder, Host.Install);
+                    var work = folder;
 
                     OnUi(delegate
                     {
                         SetBusy(false, null);
-                        ConfirmAndApply(plan, release.Source.DisplayName, folder);
+                        ConfirmAndApply(plan, release.Source.DisplayName, work);
                     });
                 }
                 catch (Exception ex)
@@ -276,58 +283,66 @@ namespace ScamWYF.Launcher.Views
         /// whether the user is sure. Replacing an existing file gets its own confirmation, because that is
         /// the only irreversible part - an install into an empty folder can be undone by deleting a file.
         /// </remarks>
-        private void ConfirmAndApply(InstallPlan plan, string title, string folder)
+        private async void ConfirmAndApply(InstallPlan plan, string title, string folder)
         {
-            var text = ModInstaller.Describe(plan);
-
-            foreach (var warning in plan.Warnings)
+            try
             {
-                text += Environment.NewLine + warning + Environment.NewLine;
-            }
+                var text = ModInstaller.Describe(plan);
 
-            if (!Dialogs.Confirm("Install " + title + "?", text, "Install"))
-            {
-                ModInstaller.Discard(folder);
-                Status("cancelled - nothing was installed");
-                return;
-            }
-
-            if (ModInstaller.ReplacesAnything(plan))
-            {
-                var replaced = new List<string>();
-                foreach (var step in plan.Steps)
+                foreach (var warning in plan.Warnings)
                 {
-                    if (step.IsReplacement) replaced.Add(step.File.FileName + " (" + step.ReplacingVersion + ")");
+                    text += Environment.NewLine + warning + Environment.NewLine;
                 }
 
-                var second = Dialogs.Confirm("Replace existing files?",
-                    "This replaces " + string.Join(", ", replaced.ToArray()) + "." + Environment.NewLine +
-                    Environment.NewLine +
-                    "There is no undo and no backup. A replaced file cannot be recovered from here.",
-                    "Replace", DialogSeverity.Warning);
-
-                if (!second)
+                if (!await Dialogs.ConfirmAsync("Install " + title + "?", text, "Install"))
                 {
                     ModInstaller.Discard(folder);
                     Status("cancelled - nothing was installed");
                     return;
                 }
-            }
 
-            try
-            {
-                var written = ModInstaller.Apply(plan);
-                Status("installed " + string.Join(", ", written));
+                if (ModInstaller.ReplacesAnything(plan))
+                {
+                    var replaced = new List<string>();
+                    foreach (var step in plan.Steps)
+                    {
+                        if (step.IsReplacement) replaced.Add(step.File.FileName + " (" + step.ReplacingVersion + ")");
+                    }
+
+                    var second = await Dialogs.ConfirmAsync("Replace existing files?",
+                        "This replaces " + string.Join(", ", replaced.ToArray()) + "." + Environment.NewLine +
+                        Environment.NewLine +
+                        "There is no undo and no backup. A replaced file cannot be recovered from here.",
+                        "Replace", DialogSeverity.Warning);
+
+                    if (!second)
+                    {
+                        ModInstaller.Discard(folder);
+                        Status("cancelled - nothing was installed");
+                        return;
+                    }
+                }
+
+                try
+                {
+                    var written = ModInstaller.Apply(plan);
+                    Status("installed " + string.Join(", ", written));
+                }
+                catch (Exception ex)
+                {
+                    ModInstaller.Discard(folder);
+                    Failed(ex.Message);
+                    Host.RefreshModViews();
+                    return;
+                }
+
+                await OfferPostInstall(plan, folder);
             }
             catch (Exception ex)
             {
                 ModInstaller.Discard(folder);
                 Failed(ex.Message);
-                Host.RefreshModViews();
-                return;
             }
-
-            OfferPostInstall(plan, folder);
         }
 
         /// <summary>
@@ -348,27 +363,26 @@ namespace ScamWYF.Launcher.Views
         /// while another step still runs, and denying everything leaves the installed files exactly as
         /// they were. Nothing here runs without an explicit yes on its own prompt, and the prompt shows
         /// the script before asking.
+        ///
+        /// A loop rather than the old recursion, because each step is awaited: the next prompt only
+        /// appears once the previous answer, and any script it ran, is finished.
         /// </remarks>
-        private void OfferPostInstall(InstallPlan plan, string folder)
+        private async Task OfferPostInstall(InstallPlan plan, string folder)
         {
-            OfferStep(plan, folder, 0);
-        }
-
-        private void OfferStep(InstallPlan plan, string folder, int index)
-        {
-            if (index >= plan.Scripts.Count)
+            foreach (var step in plan.Scripts)
             {
-                FinishInstall(folder);
-                return;
+                await OfferStep(step);
             }
 
-            var step = plan.Scripts[index];
+            FinishInstall(folder);
+        }
 
-            if (!Dialogs.ConfirmSkippable("Run optional setup?", PromptFor(step), "Run",
-                                          DialogSeverity.Warning))
+        private async Task OfferStep(PostInstallStep step)
+        {
+            if (!await Dialogs.ConfirmSkippableAsync("Run optional setup?", PromptFor(step), "Run",
+                                                     DialogSeverity.Warning))
             {
                 Status("skipped " + step.ScriptName + " - the installed files are unchanged");
-                OfferStep(plan, folder, index + 1);
                 return;
             }
 
@@ -380,46 +394,62 @@ namespace ScamWYF.Launcher.Views
                 // move is.
                 Host.Status("The game is running (" + running + "), so " + step.ScriptName +
                             " was not run.", false);
-                OfferStep(plan, folder, index + 1);
                 return;
             }
 
             SetBusy(true, "Running " + step.ScriptName + "...");
 
-            var lines = new List<string>();
-            var gate = new object();
+            var run = await CollectScript(step);
 
-            new Thread(delegate()
+            SetBusy(false, null);
+            await ReportScript(step, run.Lines, run.ExitCode);
+        }
+
+        /// <summary>What one script run produced, once it has finished.</summary>
+        private sealed class ScriptRun
+        {
+            public int ExitCode;
+            public List<string> Lines;
+        }
+
+        /// <summary>
+        /// Run a mod's setup script on a background thread and wait for it.
+        /// </summary>
+        /// <remarks>
+        /// A TaskCompletionSource rather than a plain thread and a callback: the caller is an async flow
+        /// now, and it has to wait for the exit code before it can offer the next step. The lines are
+        /// collected under a lock because the process's two reader threads fan into one callback.
+        /// </remarks>
+        private async Task<ScriptRun> CollectScript(PostInstallStep step)
+        {
+            var collected = new List<string>();
+            var gate = new object();
+            var done = new TaskCompletionSource<int>();
+
+            new Thread(delegate ()
             {
                 try
                 {
-                    SetupRunner.RunScript(step.ScriptPath, Host.Install.Path,
-                        line => { lock (gate) lines.Add(line); },
-                        exitCode => OnUi(delegate
-                        {
-                            List<string> snapshot;
-                            lock (gate) snapshot = new List<string>(lines);
-
-                            SetBusy(false, null);
-                            ReportScript(step, snapshot, exitCode);
-                            OfferStep(plan, folder, index + 1);
-                        }));
+                    ScriptRunner.RunScript(step.ScriptPath, Host.Install.Path,
+                        line => { lock (gate) collected.Add(line); },
+                        exitCode => done.TrySetResult(exitCode));
                 }
                 catch (Exception ex)
                 {
-                    var message = ex.Message;
-                    OnUi(delegate
-                    {
-                        SetBusy(false, null);
-                        ReportScript(step, new List<string> { "Could not run " + step.ScriptName +
-                                                             ": " + message }, -1);
-                        OfferStep(plan, folder, index + 1);
-                    });
+                    lock (gate) collected.Add("Could not run " + step.ScriptName + ": " + ex.Message);
+                    done.TrySetResult(-1);
                 }
             })
             {
                 IsBackground = true
             }.Start();
+
+            var exitCode = await done.Task;
+
+            List<string> snapshot;
+            lock (gate) snapshot = new List<string>(collected);
+
+            return new ScriptRun { ExitCode = exitCode, Lines = snapshot };
         }
 
         /// <summary>What the prompt shows: what the step does, then the script itself.</summary>
@@ -450,7 +480,7 @@ namespace ScamWYF.Launcher.Views
         }
 
         /// <summary>What happened, as a dialog plus a status line.</summary>
-        private void ReportScript(PostInstallStep step, List<string> lines, int exitCode)
+        private async Task ReportScript(PostInstallStep step, List<string> lines, int exitCode)
         {
             var tail = lines.Count <= 20 ? lines : lines.GetRange(lines.Count - 20, 20);
             var output = tail.Count == 0
@@ -460,13 +490,14 @@ namespace ScamWYF.Launcher.Views
             if (exitCode == 0)
             {
                 Status(step.ScriptName + " finished.");
-                Dialogs.Inform(step.ScriptName + " finished", output);
+                await Dialogs.InformAsync(step.ScriptName + " finished", output);
                 return;
             }
 
             Host.Status(step.ScriptName + " reported problems (exit " + exitCode + ").", false);
-            Dialogs.Error(step.ScriptName + " reported problems",
-                          "Exit code " + exitCode + "." + Environment.NewLine + Environment.NewLine + output);
+            await Dialogs.ErrorAsync(step.ScriptName + " reported problems",
+                                     "Exit code " + exitCode + "." + Environment.NewLine +
+                                     Environment.NewLine + output);
         }
 
         private void InstallFromUrl()
@@ -479,7 +510,7 @@ namespace ScamWYF.Launcher.Views
                 return;
             }
 
-            if (!Host.Install.CanManageMods)
+            if (!Host.Install.HasBepInEx)
             {
                 Failed("No BepInEx install found, so there is nowhere to put a mod. Run the Setup tab first.");
                 return;
@@ -530,10 +561,11 @@ namespace ScamWYF.Launcher.Views
                     plan.Release = new ReleaseInfo(source, "(no version)", null,
                         new ReleaseAsset(fileName, 0, url, fetched.Sha256));
 
+                    var work = folder;
                     OnUi(delegate
                     {
                         SetBusy(false, null);
-                        ConfirmUrl(plan, folder, HostOf(url), steps[0].Guid == null);
+                        ConfirmUrl(plan, work, HostOf(url), steps[0].Guid == null);
                     });
                 }
                 catch (Exception ex)
@@ -626,64 +658,75 @@ namespace ScamWYF.Launcher.Views
         /// <remarks>
         /// Separate from the catalogue's because there is no list behind this one. The host is named, the
         /// file's own name and version are shown, and a file with no [BepInPlugin] is called out - it would
-        /// be copied into core\, which is harmless, but it will also do nothing, and a user who does not
+        /// be copied into core, which is harmless, but it will also do nothing, and a user who does not
         /// know that will conclude the mod is broken.
         /// </remarks>
-        private void ConfirmUrl(InstallPlan plan, string folder, string host, bool looksInert)
+        private async void ConfirmUrl(InstallPlan plan, string folder, string host, bool looksInert)
         {
-            var text = new StringBuilder();
-
-            text.AppendLine("Install from " + host + "?");
-            text.AppendLine();
-            text.AppendLine("There is no list behind this URL. It is whatever that address serves, and it");
-            text.AppendLine("will be loaded and run by the game on the next launch.");
-            text.AppendLine();
-
-            foreach (var step in plan.Steps)
-            {
-                var folderName = step.File.Folder == ModFolder.Core ? "BepInEx\\core" : "BepInEx\\plugins";
-                var identity = string.IsNullOrEmpty(step.PluginName)
-                    ? step.File.FileName
-                    : step.PluginName + "  " + step.Version;
-
-                text.AppendLine("  " + identity);
-                text.AppendLine("    -> " + folderName + "\\" + step.File.FileName);
-
-                if (step.IsReplacement) text.AppendLine("    replaces " + step.ReplacingVersion);
-            }
-
-            text.AppendLine();
-            text.AppendLine("SHA-256 " + plan.Release.Package.Sha256);
-
-            if (looksInert)
-            {
-                text.AppendLine();
-                text.AppendLine("This file has no [BepInPlugin] attribute, so BepInEx will not load it as a");
-                text.AppendLine("mod. It is a library - harmless, and it will do nothing on its own.");
-            }
-
-            if (!Dialogs.Confirm("Install from " + host + "?", text.ToString(), "Install", DialogSeverity.Warning))
-            {
-                ModInstaller.Discard(folder);
-                Status("cancelled - nothing was installed");
-                return;
-            }
-
             try
             {
-                var written = ModInstaller.Apply(plan);
-                Status("installed " + string.Join(", ", written));
+                var text = new StringBuilder();
+
+                text.AppendLine("Install from " + host + "?");
+                text.AppendLine();
+                text.AppendLine("There is no list behind this URL. It is whatever that address serves, and it");
+                text.AppendLine("will be loaded and run by the game on the next launch.");
+                text.AppendLine();
+
+                foreach (var step in plan.Steps)
+                {
+                    // Relative and built with Path.Combine, so the separator matches this platform.
+                    var folderName = Path.Combine("BepInEx",
+                        step.File.Folder == ModFolder.Core ? "core" : "plugins");
+                    var identity = string.IsNullOrEmpty(step.PluginName)
+                        ? step.File.FileName
+                        : step.PluginName + "  " + step.Version;
+
+                    text.AppendLine("  " + identity);
+                    text.AppendLine("    -> " + Path.Combine(folderName, step.File.FileName));
+
+                    if (step.IsReplacement) text.AppendLine("    replaces " + step.ReplacingVersion);
+                }
+
+                text.AppendLine();
+                text.AppendLine("SHA-256 " + plan.Release.Package.Sha256);
+
+                if (looksInert)
+                {
+                    text.AppendLine();
+                    text.AppendLine("This file has no [BepInPlugin] attribute, so BepInEx will not load it as a");
+                    text.AppendLine("mod. It is a library - harmless, and it will do nothing on its own.");
+                }
+
+                if (!await Dialogs.ConfirmAsync("Install from " + host + "?", text.ToString(), "Install",
+                                                DialogSeverity.Warning))
+                {
+                    ModInstaller.Discard(folder);
+                    Status("cancelled - nothing was installed");
+                    return;
+                }
+
+                try
+                {
+                    var written = ModInstaller.Apply(plan);
+                    Status("installed " + string.Join(", ", written));
+                }
+                catch (Exception ex)
+                {
+                    Failed(ex.Message);
+                }
+                finally
+                {
+                    ModInstaller.Discard(folder);
+                }
+
+                Host.RefreshModViews();
             }
             catch (Exception ex)
             {
+                ModInstaller.Discard(folder);
                 Failed(ex.Message);
             }
-            finally
-            {
-                ModInstaller.Discard(folder);
-            }
-
-            Host.RefreshModViews();
         }
 
         private static string GuessFileName(string url)
@@ -745,7 +788,7 @@ namespace ScamWYF.Launcher.Views
 
         private void OnUi(Action action)
         {
-            if (Dispatcher.CheckAccess())
+            if (Dispatcher.UIThread.CheckAccess())
             {
                 action();
                 return;
@@ -753,7 +796,7 @@ namespace ScamWYF.Launcher.Views
 
             try
             {
-                Dispatcher.BeginInvoke(action);
+                Dispatcher.UIThread.Post(action);
             }
             catch (Exception)
             {
@@ -797,8 +840,39 @@ namespace ScamWYF.Launcher.Views
             {
                 Summary.Text = message;
                 Host.Status(message, false);
-                Dialogs.Error("Could not install", message);
+                ShowError(message);
             });
+        }
+
+        /// <summary>
+        /// Report a failure without letting the reporting itself become the failure.
+        /// </summary>
+        /// <remarks>
+        /// async void because there is nothing to await here and no caller that could: a dialog is the
+        /// end of the failure path. The try/catch is what keeps an exception in the dialog from becoming
+        /// an unhandled one on the UI thread, which would take the window down.
+        /// </remarks>
+        private async void ShowError(string message)
+        {
+            try
+            {
+                await Dialogs.ErrorAsync("Could not install", message);
+            }
+            catch (Exception)
+            {
+                // Nothing left to show it with.
+            }
+        }
+
+        private async void ShowInform(string title, string message)
+        {
+            try
+            {
+                await Dialogs.InformAsync(title, message);
+            }
+            catch (Exception)
+            {
+            }
         }
     }
 }

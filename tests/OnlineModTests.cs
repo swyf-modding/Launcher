@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using ScamWYF.Setup;
 
 namespace ScamWYF.Launcher.Tests
 {
@@ -156,9 +157,9 @@ namespace ScamWYF.Launcher.Tests
                         string.Equals(release.Package.Sha256, fetched.Sha256, StringComparison.OrdinalIgnoreCase), true);
                 }
 
-                var installed = GameInstall.Resolve(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
-                    + "\\scamwyf-plancheck-does-not-exist");
+                var installed = GameInstall.Resolve(Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "scamwyf-plancheck-does-not-exist"));
 
                 var plan = ModInstaller.Plan(release, fetched.UnpackedFolder, installed);
 

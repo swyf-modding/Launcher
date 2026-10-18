@@ -1,6 +1,11 @@
-# Line endings. This is a Windows-only WinForms app, built from sources directly, so CRLF in the
-# working tree and LF in the repository. Pinned here rather than left to each developer's
-# core.autocrlf so a build does not depend on who checked it out.
+# Line endings. This is a cross-platform .NET app now - Avalonia on net10.0, built and run on Linux and
+# Windows - so the rules can no longer assume Windows. CRLF in the working tree and LF in the repository
+# for the Windows-authored text files, pinned here rather than left to each developer's core.autocrlf so a
+# build does not depend on who checked it out.
+#
+# Shell scripts are the exception and must stay LF: a CRLF shebang is not a shebang, and a CRLF build.sh
+# would fail on Linux with "bad interpreter". Repositories configured eol=crlf by default would otherwise
+# break exactly the file a Linux user runs first.
 * text=auto eol=crlf
 
 *.cs    text eol=crlf
@@ -9,3 +14,5 @@
 *.md    text eol=crlf
 *.resx  text eol=crlf
 *.config text eol=crlf
+
+*.sh    text eol=lf

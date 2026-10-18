@@ -1,0 +1,40 @@
+using System;
+using Avalonia;
+
+namespace ScamWYF.Launcher
+{
+    /// <summary>
+    /// Process entry point.
+    /// </summary>
+    /// <remarks>
+    /// The desktop lifetime, not the single-view one: this is a window on Windows, Linux and macOS,
+    /// and <c>StartWithClassicDesktopLifetime</c> is the Avalonia equivalent of WPF's
+    /// <c>Application.Run</c> - it owns the main window and the message loop, so
+    /// <c>OnFrameworkInitializationCompleted</c> in <see cref="App"/> has somewhere to put the window
+    /// it builds.
+    ///
+    /// The arguments are forwarded rather than set aside: the launcher accepts a path to the game as
+    /// its first argument, which is how the tests and an unusual install point it at a folder.
+    /// </remarks>
+    internal static class Program
+    {
+        [STAThread]
+        public static void Main(string[] args)
+        {
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+
+        /// <summary>
+        /// The app builder, named and public so a designer or a test host could reach it.
+        /// </summary>
+        public static AppBuilder BuildAvaloniaApp()
+        {
+            return AppBuilder.Configure<App>()
+                .UsePlatformDetect()
+                // Inter is bundled with the app, so the same face is used on a machine that has no
+                // Segoe UI, and the tool does not fall back to a serif default on Linux.
+                .WithInterFont()
+                .LogToTrace();
+        }
+    }
+}

@@ -1,23 +1,27 @@
 <Window x:Class="ScamWYF.Launcher.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:ScamWYF.Launcher.Views"
         Title="Scam With Your Friends"
         Width="1060" Height="720" MinWidth="940" MinHeight="620"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource WindowBrush}"
-        TextElement.FontFamily="{StaticResource UiFont}"
-        TextElement.FontSize="12"
-        TextElement.Foreground="{StaticResource TextBrush}">
+        FontFamily="{StaticResource UiFont}"
+        FontSize="12"
+        Foreground="{StaticResource TextBrush}">
 
     <!--
         Four tabs and a status line. A launcher earns its place by making four things easy: fix a broken
         install, see what is installed, install something new, and read what the game said. Anything else
         belongs in a mod.
 
-        All four pages are created up front and kept alive. WPF would happily discard a page's visual tree
-        and rebuild it whenever its tab was reselected, which would silently throw away scroll position and
-        any half-typed URL on the Get mods tab.
+        All four pages are created up front and kept alive. Avalonia, like WPF before it, would happily
+        discard a page's visual tree and rebuild it whenever its tab was reselected, which would silently
+        throw away scroll position and any half-typed URL on the Get mods tab.
+
+        The two style layers are set up in App.xaml: FluentTheme underneath and the launcher's own
+        palette on top. StaticResource here reaches both, which is what makes the window look like the
+        rest of the tool.
     -->
     <Grid>
         <Grid.RowDefinitions>
@@ -26,10 +30,10 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- A newer launcher release on GitHub. Collapsed until a check finds one: most launches
+        <!-- A newer launcher release on GitHub. Hidden until a check finds one: most launches
              are already current, and a permanent strip would train everyone to ignore it. -->
         <Border x:Name="UpdateBar" Grid.Row="0"
-                Visibility="Collapsed"
+                IsVisible="False"
                 Background="{StaticResource AccentMutedBrush}"
                 BorderBrush="{StaticResource AccentBrush}"
                 BorderThickness="0,0,0,1"
@@ -52,29 +56,29 @@
                         Content="View release"
                         Margin="12,0,0,0"
                         MinWidth="100"
-                        Style="{StaticResource AccentButton}"
+                        Theme="{StaticResource AccentButton}"
                         Click="OnViewRelease" />
 
                 <Button Grid.Column="2"
                         Content="Dismiss"
                         Margin="8,0,0,0"
                         MinWidth="80"
-                        Style="{StaticResource FlatButton}"
+                        Theme="{StaticResource FlatButton}"
                         Click="OnDismissUpdate" />
             </Grid>
         </Border>
 
         <TabControl x:Name="Tabs" Grid.Row="1" SelectionChanged="OnTabChanged" Padding="0">
-            <TabItem Header="Setup">
+            <TabItem Header="Setup" Theme="{StaticResource TabHeader}">
                 <views:SetupView x:Name="SetupPage" />
             </TabItem>
-            <TabItem Header="Mods">
+            <TabItem Header="Mods" Theme="{StaticResource TabHeader}">
                 <views:ModsView x:Name="ModsPage" />
             </TabItem>
-            <TabItem Header="Get mods">
+            <TabItem Header="Get mods" Theme="{StaticResource TabHeader}">
                 <views:GetModsView x:Name="GetModsPage" />
             </TabItem>
-            <TabItem Header="Log">
+            <TabItem Header="Log" Theme="{StaticResource TabHeader}">
                 <views:LogView x:Name="LogPage" />
             </TabItem>
         </TabControl>
@@ -92,24 +96,24 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBlock x:Name="StatusText"
-                            Grid.Column="0"
-                            VerticalAlignment="Center"
-                            TextWrapping="Wrap"
-                            Foreground="{StaticResource MutedBrush}"
-                            Text="Ready." />
+                           Grid.Column="0"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedBrush}"
+                           Text="Ready." />
 
                 <Button x:Name="CheckUpdatesButton"
                         Grid.Column="1"
                         Content="Check for updates"
                         Margin="0,0,8,0"
                         MinWidth="130"
-                        Style="{StaticResource FlatButton}"
+                        Theme="{StaticResource FlatButton}"
                         Click="OnCheckUpdates" />
 
                 <Button Grid.Column="2"
                         Content="Play"
                         MinWidth="100"
-                        Style="{StaticResource AccentButton}"
+                        Theme="{StaticResource AccentButton}"
                         Click="OnPlay" />
             </Grid>
         </Border>

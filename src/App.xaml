@@ -1,11 +1,22 @@
-<Application x:Class="ScamWYF.Launcher.App"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Application.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="Theme.xaml" />
-            </ResourceDictionary.MergedDictionaries>
-        </ResourceDictionary>
-    </Application.Resources>
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ScamWYF.Launcher.App"
+             RequestedThemeVariant="Dark">
+
+    <!--
+        Two style layers, in this order.
+
+        FluentTheme first: it is the stock control themes for every control this window uses, and it is
+        themed dark by RequestedThemeVariant. Replacing all of them would mean reimplementing text
+        selection, popups, focus adorers and the keyboard navigation most people never see but always
+        notice when it is missing.
+
+        Theme.xaml second: the launcher's own palette, buttons, tab strip and chips, layered on top.
+        Styles win over control themes in Avalonia, so everything declared there takes precedence over
+        Fluent's own colouring without giving up its behaviour. See that file for why it is what it is.
+    -->
+    <Application.Styles>
+        <FluentTheme />
+        <StyleInclude Source="avares://ScamWYF.Launcher/src/Theme.xaml" />
+    </Application.Styles>
 </Application>

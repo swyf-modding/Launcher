@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using ScamWYF.Setup;
 
 namespace ScamWYF.Launcher
 {
@@ -162,7 +163,11 @@ namespace ScamWYF.Launcher
             {
                 foreach (var entry in archive.Entries)
                 {
-                    var target = Path.GetFullPath(Path.Combine(root, entry.FullName));
+                    // '\' is a separator on Windows and an ordinary character on Linux, so an entry like
+                    // "..\..\x" escapes on one platform and not the other. Both separators are normalised
+                    // before the check, so the answer does not depend on which machine unpacks the zip.
+                    var name = entry.FullName.Replace(ZipSeparator, Path.DirectorySeparatorChar);
+                    var target = Path.GetFullPath(Path.Combine(root, name));
 
                     if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
                     {
@@ -286,6 +291,13 @@ namespace ScamWYF.Launcher
         /// </summary>
         internal const long MaxScriptBytes = 64L * 1024;
 
+        /// <summary>
+        /// The separator a Windows-authored zip entry may carry. The archive format specifies '/',
+        /// but archives built on Windows routinely use '\', and it has to be understood as a separator
+        /// on every platform or a traversal would be refused on Windows and allowed on Linux.
+        /// </summary>
+        private const char ZipSeparator = '\\';
+
         private static PostInstallStep ResolveScript(string unpackedFolder, PostInstallStep declared)
         {
             var path = Path.Combine(unpackedFolder, declared.ScriptName);
@@ -378,13 +390,17 @@ namespace ScamWYF.Launcher
 
             foreach (var step in plan.Steps)
             {
-                var folder = step.File.Folder == ModFolder.Core ? "BepInEx\\core" : "BepInEx\\plugins";
+                // Relative and built with Path.Combine, so the confirmation shows the same separator
+                // the install will actually use on this platform rather than a Windows backslash.
+                var folder = step.File.Folder == ModFolder.Core
+                    ? Path.Combine("BepInEx", "core")
+                    : Path.Combine("BepInEx", "plugins");
                 var identity = string.IsNullOrEmpty(step.PluginName)
                     ? step.File.FileName
                     : step.PluginName + "  " + step.Version;
 
                 text.AppendLine("  " + identity);
-                text.AppendLine("    -> " + folder + "\\" + step.File.FileName);
+                text.AppendLine("    -> " + Path.Combine(folder, step.File.FileName));
 
                 if (step.IsReplacement)
                 {

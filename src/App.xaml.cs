@@ -1,50 +1,77 @@
 using System;
-using System.Windows;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 
 namespace ScamWYF.Launcher
 {
     /// <summary>
-    /// Process entry point.
+    /// Process entry point for the UI.
     /// </summary>
     /// <remarks>
-    /// Built by hand in OnStartup rather than through StartupUri, because the launcher accepts a path to
-    /// the game as its first argument and StartupUri has no way to pass arguments to a window's
-    /// constructor.
+    /// The window is built here rather than from a StartupUri, because the launcher accepts a path to
+    /// the game as its first argument and there is no way to pass arguments to a window's constructor
+    /// from markup.
     ///
-    /// Unhandled exceptions are reported rather than left to the default handler, which in a WinExe
-    /// means a crash with no window at all and nothing in the event log a player would ever look at. A
-    /// launcher that fails should say so in words.
+    /// Unhandled exceptions are reported rather than left to the default handler, which in a windowed
+    /// build means a crash with no window at all and nothing a player would ever look at. A launcher
+    /// that fails should say so in words.
     /// </remarks>
     public partial class App : Application
     {
-        protected override void OnStartup(StartupEventArgs e)
+        public override void Initialize()
         {
-            base.OnStartup(e);
-
-            DispatcherUnhandledException += OnUnhandled;
-
-            var window = new MainWindow(e.Args);
-            MainWindow = window;
-            window.Show();
+            AvaloniaXamlLoader.Load(this);
         }
 
-        private void OnUnhandled(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+        public override void OnFrameworkInitializationCompleted()
         {
-            Dialogs.Error("Something went wrong", Describe(e.Exception));
-            e.Handled = true;
+            // Dispatcher failures are the ones raised by an event handler - a click that throws - and
+            // they can be contained, so the window survives them.
+            Dispatcher.UIThread.UnhandledException += (sender, e) =>
+            {
+                e.Handled = true;
+                _ = Dialogs.ErrorAsync("Something went wrong", Describe(e.Exception));
+            };
+
+            // Anything that escapes a non-UI thread cannot be shown in a dialog: there is no window
+            // left once the runtime is unwinding, so this only writes what happened where someone can
+            // find it. stderr, because the process may be started from a terminal.
+            AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
+            {
+                try
+                {
+                    Console.Error.WriteLine("Unhandled: " + Describe(e.ExceptionObject as Exception));
+                }
+                catch (Exception)
+                {
+                    // Nothing left to do. Reporting must not itself throw.
+                }
+            };
+
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                desktop.MainWindow = new MainWindow(desktop.Args);
+            }
+
+            base.OnFrameworkInitializationCompleted();
         }
 
         /// <summary>
         /// An exception as something a person can act on.
         /// </summary>
         /// <remarks>
-        /// The outermost message is often useless on its own - "Provide value on
-        /// TypeConverterMarkupExtension threw an exception" says only that something in the XAML is
-        /// wrong, not what - so this walks to the innermost cause and keeps a few stack frames to say
-        /// where it came from. A launcher that fails silently is worse than one that fails loudly.
+        /// The outermost message is often useless on its own - "Unable to resolve property" says only
+        /// that something in the XAML is wrong, not what - so this walks to the innermost cause and
+        /// keeps a few stack frames to say where it came from. A launcher that fails silently is worse
+        /// than one that fails loudly.
         /// </remarks>
-        private static string Describe(Exception error)
+        internal static string Describe(Exception error)
         {
+            if (error == null) return "Something went wrong, and no further detail was recorded.";
+
             var text = "";
 
             for (var inner = error; inner != null; inner = inner.InnerException)
@@ -58,16 +85,8 @@ namespace ScamWYF.Launcher
                     if (lines.Length > 0) frame = lines[0].Trim();
                 }
 
-                // XAML failures carry the line they happened on, which is the only thing that actually
-                // localises them. Without this a bad Style setter is reported against a class name and
-                // there is nothing to go on.
-                var parse = inner as System.Windows.Markup.XamlParseException;
-                var line = parse != null && parse.LineNumber > 0
-                    ? "  (line " + parse.LineNumber + ", position " + parse.LinePosition + ")"
-                    : "";
-
                 text += (text.Length == 0 ? "" : Environment.NewLine + Environment.NewLine)
-                      + inner.GetType().Name + ": " + inner.Message + line
+                      + inner.GetType().Name + ": " + inner.Message
                       + (frame.Length == 0 ? "" : Environment.NewLine + "  at " + frame);
             }
 

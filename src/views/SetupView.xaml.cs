@@ -1,8 +1,11 @@
 using System;
 using System.Collections.ObjectModel;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
+using System.Linq;
+using Avalonia.Controls;
+using Avalonia.Media;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using ScamWYF.Setup;
 
 namespace ScamWYF.Launcher.Views
 {
@@ -14,17 +17,17 @@ namespace ScamWYF.Launcher.Views
             Name = name;
             State = ok ? "ok" : "missing";
             Detail = detail ?? "";
-            Brush = (Brush)Application.Current.FindResource(ok ? "TextBrush" : "BadBrush");
+            Brush = Palette.Brush(ok ? Palette.Text : Palette.Bad);
         }
 
         public string Name { get; private set; }
         public string State { get; private set; }
         public string Detail { get; private set; }
-        public Brush Brush { get; private set; }
+        public IBrush Brush { get; private set; }
     }
 
     /// <summary>
-    /// The setup tab: what is missing from the install, and a button to run the setup script.
+    /// The setup tab: what is missing from the install, and a button to run the setup.
     /// </summary>
     public partial class SetupView : UserControl
     {
@@ -56,7 +59,7 @@ namespace ScamWYF.Launcher.Views
                 install.HasDoorstop ? "winhttp.dll present" : "the loader half, which starts everything"));
             _rows.Add(new CheckRow("Corlib override", install.HasCorlibOverride,
                 install.HasCorlibOverride
-                    ? "unstripped_corlib\\ seeded"
+                    ? "unstripped_corlib seeded"
                     : "required: the shipped mscorlib is stripped, and the loader cannot start without this"));
             _rows.Add(new CheckRow("Override wired up", install.DoorstopPointsAtOverride,
                 install.DoorstopPointsAtOverride
@@ -66,38 +69,71 @@ namespace ScamWYF.Launcher.Views
                 install.HasBepInEx ? install.BepInExCore : "not installed"));
 
             // The launcher check, unlike the five above it. Those are facts about the game install;
-            // this one is a fact about this download, and it is the only way to tell a complete zip from
-            // a partial one without guessing from two disabled buttons. It also names the Setup the
-            // build pinned, which is what "which scripts did this launcher ship with" needs to answer.
-            var setup = Host.Setup;
-            _rows.Add(new CheckRow("Setup scripts", setup.IsAvailable,
-                setup.IsAvailable
-                    ? (setup.BundledVersion ?? "bundled with this launcher")
-                    : "not found beside the exe - see the note below"));
-
-            var canRun = install.HasGame;
-            RunButton.IsEnabled = canRun && Host.Setup.IsAvailable;
-            OfflineButton.IsEnabled = RunButton.IsEnabled;
-
-            if (!Host.Setup.IsAvailable && Output.Text.Length == 0)
+            // this one is a fact about this download, and it is the only way to tell a complete build
+            // from a partial one. The payload is embedded in the exe (or read from vendor\ during
+            // development), so there is no Setup\ folder beside it to go missing any more.
+            string payload;
+            var payloadOk = true;
+            try
             {
-                // Only into an empty box. Reload runs every time the tab is shown, and appending a
-                // constant message each time made it look as though setup had been run repeatedly.
-                Append("");
-                Append(Host.Setup.MissingReason);
+                payload = SetupPayload.ResolveDefault().Describe;
             }
+            catch (Exception ex)
+            {
+                payloadOk = false;
+                payload = ex.Message;
+            }
+            _rows.Add(new CheckRow("Setup payload", payloadOk, payload));
+
+            // Linux only: the game runs under Proton, and without the winhttp override Wine's own
+            // winhttp.dll wins and Doorstop never loads. Windows has no prefix and no such problem.
+            //
+            // The override is applied here, not only when the user clicks Play, because a player who
+            // launched the game through Steam already has a prefix and should not have to find the launch
+            // option themselves. Best effort: if the prefix is missing or user.reg is not writable, the
+            // row says so and the manual launch option remains the fallback.
+            var proton = new ProtonIntegration();
+            if (proton.IsLinux)
+            {
+                // Apply the override automatically when the prefix exists and the game is not running.
+                // Writing user.reg while Wine is using it is unsafe, and a running game has already
+                // loaded (or failed to load) the override, so there is nothing to gain from writing then.
+                string running;
+                var gameRunning = ModManager.GameRunning(out running);
+                if (!proton.DllOverrideIsSet(install) && install.Steam.PrefixDir != null && !gameRunning)
+                {
+                    proton.EnsureDllOverride(install, NullSetupLog.Instance);
+                }
+
+                var overridden = proton.DllOverrideIsSet(install);
+                var detail = overridden
+                    ? "winhttp is overridden in this prefix"
+                    : (install.Steam.PrefixDir == null
+                        ? "not set - launch the game once under Proton, then reopen this tab"
+                        : (gameRunning
+                            ? "not set - quit the game first, then reopen this tab"
+                            : "not set - could not write user.reg; add this game's Steam launch option: " + GameInstall.ProtonLaunchOption));
+                _rows.Add(new CheckRow("Proton winhttp override", overridden, detail));
+            }
+
+            // The setup itself is always present now, so the buttons depend only on there being a game.
+            RunButton.IsEnabled = install.HasGame;
+            OfflineButton.IsEnabled = install.HasGame;
         }
 
-        private void OnRun(object sender, RoutedEventArgs e) { Start(false); }
-        private void OnRunOffline(object sender, RoutedEventArgs e) { Start(true); }
-        private void OnOpenFolder(object sender, RoutedEventArgs e) { Host.OpenFolder(Host.Install.Path); }
+        private void OnRun(object sender, Avalonia.Interactivity.RoutedEventArgs e) { Start(false); }
+        private void OnRunOffline(object sender, Avalonia.Interactivity.RoutedEventArgs e) { Start(true); }
+        private void OnOpenFolder(object sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            Host.OpenFolder(Host.Install.Path);
+        }
 
         private void Start(bool offline)
         {
             if (Host.Busy) return;
 
             Append("");
-            Append("=== running setup.ps1" + (offline ? " -Offline" : "") + " ===");
+            Append("=== running setup" + (offline ? " -Offline" : "") + " ===");
 
             Host.SetBusy(true);
             RunButton.IsEnabled = false;
@@ -106,22 +142,21 @@ namespace ScamWYF.Launcher.Views
             // Both callbacks are marshalled, and neither may be simplified back to touching a control
             // directly.
             //
-            // They arrive on other threads: each output line from the process's async reader, and the
-            // exit code from the thread SetupRunner started. Reading a DependencyProperty off the
-            // dispatcher throws InvalidOperationException, and an unhandled exception on a thread-pool
-            // thread does not raise a dialog - it terminates the process. That is not a hypothetical:
-            // reading the follow checkbox here is what made "Set up / repair" kill the launcher outright,
-            // after a green build, because nothing else in the pipeline ever ran a script.
+            // They arrive on other threads: each line from the setup's own log, and the exit code from
+            // the worker MainWindow started. Reading a control off the UI thread throws, and an unhandled
+            // exception on a thread-pool thread does not raise a dialog - it terminates the process. That
+            // is not a hypothetical: reading the follow checkbox here is what made "Set up / repair" kill
+            // the launcher outright, after a green build, because nothing else in the pipeline ever ran
+            // a setup.
             Host.RunSetup(offline,
                 line => OnUi(delegate
                 {
                     Append(line);
 
-                    // "Follow" means keep the newest line visible. It used to be a call to Pump() after
-                    // every line, which was WinForms' Application.DoEvents: WPF repaints once this
-                    // callback returns, so there is nothing to force, and pumping from inside a
-                    // per-line callback only invites re-entrancy.
-                    if (FollowLog.IsChecked == true) Output.ScrollToEnd();
+                    // "Follow" means keep the newest line visible. There is nothing to force here: the
+                    // window repaints once this callback returns, and pumping from inside a per-line
+                    // callback only invites re-entrancy.
+                    if (FollowLog.IsChecked == true) ScrollToEnd();
                 }),
                 exitCode => OnUi(delegate
                 {
@@ -139,13 +174,13 @@ namespace ScamWYF.Launcher.Views
         /// Run work on the UI thread.
         /// </summary>
         /// <remarks>
-        /// The script runner reports from threads of its own, so every callback it is handed goes
-        /// through here. Running inline when already on the dispatcher keeps a burst of output lines in
-        /// order, which a BeginInvoke per line would only preserve by accident.
+        /// The setup reports from a thread of its own, so every callback it is handed goes through here.
+        /// Running inline when already on the dispatcher keeps a burst of output lines in order, which a
+        /// Post per line would only preserve by accident.
         /// </remarks>
         private void OnUi(Action action)
         {
-            if (Dispatcher.CheckAccess())
+            if (Dispatcher.UIThread.CheckAccess())
             {
                 action();
                 return;
@@ -153,24 +188,38 @@ namespace ScamWYF.Launcher.Views
 
             try
             {
-                Dispatcher.BeginInvoke(action);
+                Dispatcher.UIThread.Post(action);
             }
             catch (Exception)
             {
-                // The window closed while the script was still running. There is nobody left to tell.
+                // The window closed while setup was still running. There is nobody left to tell.
             }
         }
 
         private void Append(string line)
         {
             // Belt and braces: every current caller arrives via OnUi, but this is the one method that
-            // writes to the window from script output, so it keeps its own guard rather than trusting
+            // writes to the window from setup output, so it keeps its own guard rather than trusting
             // each call site to remember.
             OnUi(delegate
             {
-                Output.AppendText(line + Environment.NewLine);
+                Output.Text = (Output.Text ?? "") + line + Environment.NewLine;
                 Output.CaretIndex = Output.Text.Length;
             });
+        }
+
+        /// <summary>
+        /// Keep the newest line visible.
+        /// </summary>
+        /// <remarks>
+        /// Avalonia's TextBox has no ScrollToEnd, so the internal ScrollViewer is asked instead. It is
+        /// only in the visual tree once the tab has been laid out, which is exactly when following
+        /// matters; when it is not, there is nothing to scroll.
+        /// </remarks>
+        private void ScrollToEnd()
+        {
+            var scroll = Output.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+            if (scroll != null) scroll.ScrollToEnd();
         }
     }
 }
