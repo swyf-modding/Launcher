@@ -1,9 +1,9 @@
 <#
-    Runs the launcher's tests.
+    Runs the switchboard's tests.
 
     A thin wrapper around `dotnet run`, in the same way build.ps1 is a thin wrapper around `dotnet build`:
 
-        dotnet run --project tests\Launcher.Tests.csproj -c Release
+        dotnet run --project tests\Switchboard.Tests.csproj -c Release
 
     is an equivalent command. What this adds is the -Online switch and a readable summary.
 
@@ -26,7 +26,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$project = Join-Path $repoRoot 'tests\Launcher.Tests.csproj'
+$project = Join-Path $repoRoot 'tests\Switchboard.Tests.csproj'
 
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
     throw "dotnet was not found on PATH. The tests are run with the .NET SDK: https://dotnet.microsoft.com/download"

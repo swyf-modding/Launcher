@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    The launcher, built with the SDK rather than by hand-rolled csc.
+    The switchboard, built with the SDK rather than by hand-rolled csc.
 
     Avalonia on net10.0, deliberately. The previous build was WPF on .NET Framework 4.8, which shipped
     with every Windows 10 and 11 and so needed nothing installed on the player's machine - but it was
@@ -10,7 +10,7 @@
     still a single file a player can just run.
 
     The setup logic is not reimplemented here. ScamWYF.Setup.Core does the work in-process, so the
-    launcher, the CLI and the tests all run the same code; this project only presents it.
+    switchboard, the CLI and the tests all run the same code; this project only presents it.
   -->
 
   <PropertyGroup>
@@ -19,8 +19,8 @@
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <AssemblyName>ScamWYF.Launcher</AssemblyName>
-    <RootNamespace>ScamWYF.Launcher</RootNamespace>
+    <AssemblyName>Switchboard</AssemblyName>
+    <RootNamespace>Switchboard</RootNamespace>
 
     <!-- Bindings are the reflection kind, not compiled: the row types are internal and the views bind
          to plain properties. Compiled bindings would need an x:DataType on every template. -->

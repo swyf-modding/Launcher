@@ -4,12 +4,12 @@ using System.IO;
 using System.Reflection;
 using System.Text.Json;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
-    /// <summary>The latest published release of the launcher itself.</summary>
-    internal sealed class LauncherRelease
+    /// <summary>The latest published release of the switchboard itself.</summary>
+    internal sealed class SwitchboardRelease
     {
-        public LauncherRelease(string tagName, string pageUrl)
+        public SwitchboardRelease(string tagName, string pageUrl)
         {
             TagName = tagName;
             PageUrl = pageUrl;
@@ -20,7 +20,7 @@ namespace ScamWYF.Launcher
     }
 
     /// <summary>
-    /// Checks GitHub for a newer release of the launcher.
+    /// Checks GitHub for a newer release of the switchboard.
     /// </summary>
     /// <remarks>
     /// UI-free on purpose, like the rest of src\: the tests compile this file directly, and a version
@@ -34,7 +34,7 @@ namespace ScamWYF.Launcher
     internal static class UpdateChecker
     {
         internal const string Owner = "swyf-modding";
-        internal const string Repo = "Launcher";
+        internal const string Repo = "Switchboard";
 
         internal static string LatestUrl
         {
@@ -61,8 +61,8 @@ namespace ScamWYF.Launcher
             return version != null ? version.ToString() : "0.0.0";
         }
 
-        /// <summary>Ask GitHub for the latest published launcher release.</summary>
-        public static LauncherRelease FetchLatest()
+        /// <summary>Ask GitHub for the latest published switchboard release.</summary>
+        public static SwitchboardRelease FetchLatest()
         {
             var json = Http.GetText(LatestUrl);
             return ParseReleaseJson(json);
@@ -73,7 +73,7 @@ namespace ScamWYF.Launcher
         /// Separate from the fetch so the shape can be tested without a network: the reply is a few KB
         /// of JSON and the only two fields that matter here are tag_name and html_url.
         /// </remarks>
-        internal static LauncherRelease ParseReleaseJson(string json)
+        internal static SwitchboardRelease ParseReleaseJson(string json)
         {
             JsonDocument document;
             try
@@ -106,7 +106,7 @@ namespace ScamWYF.Launcher
                     pageUrl = page.GetString();
                 }
 
-                return new LauncherRelease(tag.GetString().Trim(), pageUrl);
+                return new SwitchboardRelease(tag.GetString().Trim(), pageUrl);
             }
         }
 

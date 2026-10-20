@@ -8,7 +8,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
-namespace ScamWYF.Launcher.Views
+namespace Switchboard.Views
 {
     /// <summary>One line of the picked-out-problems table.</summary>
     internal sealed class ProblemRow

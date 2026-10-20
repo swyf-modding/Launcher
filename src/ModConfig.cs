@@ -5,7 +5,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>
     /// One editable setting in a mod's config file.

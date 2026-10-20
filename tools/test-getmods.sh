@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# Runs the launcher's tests. The shell twin of tools/test-getmods.ps1.
+# Runs the switchboard's tests. The shell twin of tools/test-getmods.ps1.
 #
 #   ./tools/test-getmods.sh
 #   ./tools/test-getmods.sh --online
 #
 # A thin wrapper around `dotnet run`, in the same way build.sh is a thin wrapper around `dotnet publish`:
 #
-#   dotnet run --project tests/Launcher.Tests.csproj -c Release
+#   dotnet run --project tests/Switchboard.Tests.csproj -c Release
 #
 # is an equivalent command. What this adds is the --online switch and a readable summary.
 #
@@ -33,7 +33,7 @@ while [ $# -gt 0 ]; do
 done
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-project="$repo_root/tests/Launcher.Tests.csproj"
+project="$repo_root/tests/Switchboard.Tests.csproj"
 
 if ! command -v dotnet >/dev/null 2>&1; then
     echo "dotnet was not found on PATH. The tests are run with the .NET SDK:" >&2

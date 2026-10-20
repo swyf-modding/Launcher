@@ -8,7 +8,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 
-namespace ScamWYF.Launcher.Views
+namespace Switchboard.Views
 {
     /// <summary>
     /// Edit one mod's BepInEx config file.
@@ -23,7 +23,7 @@ namespace ScamWYF.Launcher.Views
     /// <see cref="ModConfigFile"/> for why round-tripping rather than regenerating is the whole design.
     ///
     /// The editor controls are built in code and pick their look from the same styles the rest of the
-    /// window uses: the setting cards, the section headings and the choice chips are the launcher's own
+    /// window uses: the setting cards, the section headings and the choice chips are the switchboard's own
     /// classes rather than locally invented ones.
     /// </remarks>
     public partial class ConfigWindow : Window
@@ -262,7 +262,7 @@ namespace ScamWYF.Launcher.Views
             Close(true);
         }
 
-        /// <summary>A TextBlock with one of the launcher's text classes on it.</summary>
+        /// <summary>A TextBlock with one of the switchboard's text classes on it.</summary>
         private static TextBlock Text(string content, string className)
         {
             var block = new TextBlock { Text = content };

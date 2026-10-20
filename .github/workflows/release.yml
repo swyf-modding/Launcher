@@ -2,7 +2,7 @@ name: release
 
 # Publishes a release when a version tag is pushed.
 #
-# The launcher is the one project here that can be released without a game install, so this is fully
+# The switchboard is the one project here that can be released without a game install, so this is fully
 # automated: a hosted runner builds it, and the tag is the version. Pushing v1.2.3 produces a release
 # whose binaries report 1.2.3 and name the commit they came from.
 #
@@ -18,7 +18,7 @@ name: release
 # needs a self-hosted runner with the game installed.
 
 env:
-  # The Setup commit the launcher is compiled against. A tag, not a branch: the point of building from a
+  # The Setup commit the switchboard is compiled against. A tag, not a branch: the point of building from a
   # tag here is reproducibility, and a moving branch is the opposite of that. ci.yml pins the same value,
   # so a bump is exercised by a normal push before any release depends on it.
   SETUP_REF: v1.0.2
@@ -38,10 +38,10 @@ jobs:
     steps:
       # fetch-depth 0 for the tags. A shallow clone has no tag refs, and without them the version stamp
       # falls back to 0.0.0+untagged and stamps a released binary with a version nobody can trace.
-      - name: Check out Launcher
+      - name: Check out Switchboard
         uses: actions/checkout@v4
         with:
-          path: Launcher
+          path: Switchboard
           fetch-depth: 0
 
       # Not a submodule and not vendored: a second plain checkout, compiled against by the project
@@ -59,7 +59,7 @@ jobs:
           dotnet-version: '10.x'
 
       - name: Confirm the tag and the commit agree
-        working-directory: Launcher
+        working-directory: Switchboard
         run: |
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
@@ -76,14 +76,14 @@ jobs:
           echo "  $tag -> $describe"
 
       - name: Build and publish both platforms
-        working-directory: Launcher
+        working-directory: Switchboard
         run: ./build.sh
 
       # Cheap, offline, and the kind of thing that should never be discovered during a release. The
       # install path is the only part of this tool that downloads and writes code, so its defences are
       # worth checking on the exact commit being published rather than on whatever was last pushed.
       - name: Run the offline tests
-        working-directory: Launcher
+        working-directory: Switchboard
         run: ./tools/test-getmods.sh
 
       # Stamping the version is the whole point of building from a tag, and build.sh reads it from
@@ -92,12 +92,12 @@ jobs:
       # self-contained - the embedded setup payload makes each one tens of megabytes, and a stub would
       # not.
       - name: Confirm the published files are complete
-        working-directory: Launcher
+        working-directory: Switchboard
         run: |
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
 
-          for file in dist/linux-x64/ScamWYF.Launcher dist/win-x64/ScamWYF.Launcher.exe; do
+          for file in dist/linux-x64/Switchboard dist/win-x64/Switchboard.exe; do
             [ -f "$file" ] || { echo "missing $file" >&2; exit 1; }
             size=$(stat -c%s "$file")
             if [ "$size" -lt 20000000 ]; then
@@ -113,17 +113,17 @@ jobs:
           {
             echo "| Platform | File | Bytes |"
             echo "|---|---|---|"
-            for file in dist/linux-x64/ScamWYF.Launcher dist/win-x64/ScamWYF.Launcher.exe; do
+            for file in dist/linux-x64/Switchboard dist/win-x64/Switchboard.exe; do
               echo "| $(basename "$(dirname "$file")") | $(basename "$file") | $(stat -c%s "$file") |"
             done
-            echo "| Launcher tag | $tag | |"
+            echo "| Switchboard tag | $tag | |"
             echo "| Setup ref | $SETUP_REF | |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            Launcher/dist/linux-x64/ScamWYF.Launcher
-            Launcher/dist/win-x64/ScamWYF.Launcher.exe
+            Switchboard/dist/linux-x64/Switchboard
+            Switchboard/dist/win-x64/Switchboard.exe
           generate_release_notes: true
           draft: false

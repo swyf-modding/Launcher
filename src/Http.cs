@@ -8,7 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>
     /// The only place this tool touches the network.
@@ -45,7 +45,7 @@ namespace ScamWYF.Launcher
 
         private const int MaxRedirects = 5;
 
-        private const string UserAgent = "ScamWYF.Launcher";
+        private const string UserAgent = "Switchboard";
 
         /// <summary>
         /// One client for the process.

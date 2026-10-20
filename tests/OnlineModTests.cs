@@ -4,7 +4,7 @@ using System.Reflection;
 using System.Threading;
 using ScamWYF.Setup;
 
-namespace ScamWYF.Launcher.Tests
+namespace Switchboard.Tests
 {
     /// <summary>
     /// Exercises the real network path, which the offline tests cannot: the GitHub listing, the download,

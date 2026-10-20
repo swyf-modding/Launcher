@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Threading;
 
-namespace ScamWYF.Launcher.Views
+namespace Switchboard.Views
 {
     /// <summary>
     /// One catalogue row. <see cref="Release"/> is what the install path uses; the rest is for display.

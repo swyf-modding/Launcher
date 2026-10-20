@@ -1,7 +1,7 @@
-<Window x:Class="ScamWYF.Launcher.MainWindow"
+<Window x:Class="Switchboard.MainWindow"
         xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:views="clr-namespace:ScamWYF.Launcher.Views"
+        xmlns:views="clr-namespace:Switchboard.Views"
         Title="Scam With Your Friends"
         Width="1060" Height="720" MinWidth="940" MinHeight="620"
         WindowStartupLocation="CenterScreen"
@@ -11,7 +11,7 @@
         Foreground="{StaticResource TextBrush}">
 
     <!--
-        Four tabs and a status line. A launcher earns its place by making four things easy: fix a broken
+        Four tabs and a status line. A switchboard earns its place by making four things easy: fix a broken
         install, see what is installed, install something new, and read what the game said. Anything else
         belongs in a mod.
 
@@ -19,7 +19,7 @@
         discard a page's visual tree and rebuild it whenever its tab was reselected, which would silently
         throw away scroll position and any half-typed URL on the Get mods tab.
 
-        The two style layers are set up in App.xaml: FluentTheme underneath and the launcher's own
+        The two style layers are set up in App.xaml: FluentTheme underneath and the switchboard's own
         palette on top. StaticResource here reaches both, which is what makes the window look like the
         rest of the tool.
     -->
@@ -30,7 +30,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- A newer launcher release on GitHub. Hidden until a check finds one: most launches
+        <!-- A newer switchboard release on GitHub. Hidden until a check finds one: most launches
              are already current, and a permanent strip would train everyone to ignore it. -->
         <Border x:Name="UpdateBar" Grid.Row="0"
                 IsVisible="False"

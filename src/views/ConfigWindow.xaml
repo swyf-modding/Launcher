@@ -1,4 +1,4 @@
-<Window x:Class="ScamWYF.Launcher.Views.ConfigWindow"
+<Window x:Class="Switchboard.Views.ConfigWindow"
         xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Mod config"

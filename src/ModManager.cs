@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>
     /// Turning mods on and off, and removing them.

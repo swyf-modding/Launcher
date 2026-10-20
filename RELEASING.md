@@ -6,16 +6,16 @@ How a release is cut across these five repositories, with the `gh` CLI.
 
 | Repository | Has releases? | Why |
 |---|---|---|
-| **Launcher** | yes, automated | Builds on a hosted runner — no game needed. Tag it and CI publishes. |
+| **Switchboard** | yes, automated | Builds on a hosted runner — no game needed. Tag it and CI publishes. |
 | **Mod-Handler** | yes, manual | Compiles against the game's own assemblies, so it builds only on a machine that has the game. |
 | **AI-Backend** | yes, manual | Same. |
 | **mod-lib** | no | A library, not something anyone installs. It has tags, because the mods resolve their versions from *their own* repo, but no release artefacts. |
-| **Setup** | no | Scripts, not something anyone installs on its own. Its tags are what the Launcher is compiled against. |
+| **Setup** | no | Scripts, not something anyone installs on its own. Its tags are what the Switchboard is compiled against. |
 
 The rule behind the split: **a repository gets a release if it produces a file somebody downloads.**
-mod-lib is consumed as a submodule, and Setup as a project reference the Launcher compiles against, so
+mod-lib is consumed as a submodule, and Setup as a project reference the Switchboard compiles against, so
 there is nothing to attach for either. Setup's *content* does reach users — it is the setup logic the
-Setup tab runs, and the corlib and Doorstop it seeds are embedded in every Launcher download — but it
+Setup tab runs, and the corlib and Doorstop it seeds are embedded in every Switchboard download — but it
 does so as part of someone else's release, so a Setup release of its own would be a second copy with a
 second version to keep straight.
 
@@ -32,12 +32,12 @@ Publishing a mod before `mod-lib` is on the remote gives you a repo whose `build
 `The term 'Version.ps1' is not recognized as the name of a cmdlet` — which does not obviously mean
 "bump your submodule".
 
-## Cutting a Launcher release
+## Cutting a Switchboard release
 
 Completely automated. From a clean tree:
 
 ```bash
-cd Launcher
+cd Switchboard
 ./build.sh                 # what CI will do; catch it before the tag
 ./tools/test-getmods.sh    # the offline assertions
 git tag v1.2.3
@@ -47,12 +47,12 @@ git push origin v1.2.3
 On Windows, `.\build.ps1` and `.\tools\test-getmods.ps1` are the same two commands.
 
 `release.yml` then builds the tagged commit on a hosted runner and publishes a release holding
-`ScamWYF.Launcher` (Linux) and `ScamWYF.Launcher.exe` (Windows) — one self-contained file each. Watch it
+`Switchboard` (Linux) and `Switchboard.exe` (Windows) — one self-contained file each. Watch it
 with:
 
 ```bash
-gh run watch --repo swyf-modding/Launcher
-gh release view v1.2.3 --repo swyf-modding/Launcher
+gh run watch --repo swyf-modding/Switchboard
+gh release view v1.2.3 --repo swyf-modding/Switchboard
 ```
 
 Four gates stand between the tag and the published binary, because a wrong version in a release is worse
@@ -71,12 +71,12 @@ uploading a binary by hand.
 To check a tag exists and points where you expect before pushing it:
 
 ```bash
-gh api repos/swyf-modding/Launcher/git/ref/tags/v1.2.3
+gh api repos/swyf-modding/Switchboard/git/ref/tags/v1.2.3
 ```
 
 ### Setup is pinned, not tracked
 
-The launcher compiles against Setup's `ScamWYF.Setup.Core`, so a Launcher release is really a release of
+The switchboard compiles against Setup's `ScamWYF.Setup.Core`, so a Switchboard release is really a release of
 two repositories at once. Both workflows check Setup out separately, at `SETUP_REF` at the top of the
 file:
 
@@ -85,16 +85,16 @@ env:
   SETUP_REF: v1.0.0
 ```
 
-**It is a tag, not a branch.** Tracking Setup's `main` would mean two Launcher releases built from the
+**It is a tag, not a branch.** Tracking Setup's `main` would mean two Switchboard releases built from the
 same commit could ship different setup logic, which is the same reason `release.yml` refuses to publish
-from a dirty tree. The commit that was built is recorded in the job summary beside the launcher's version
+from a dirty tree. The commit that was built is recorded in the job summary beside the switchboard's version
 and inside the binary's stamped version, so a release can be traced to the exact setup it shipped.
 
 **To move a Setup release out to users, bump `SETUP_REF` in both `ci.yml` and `release.yml` and push.**
 `ci.yml` running on that push is what tells you the new setup compiles and passes; a plain push to `main`
-is enough, no Setup tag required. The failure mode to watch for is the reverse: shipping a Launcher tag
+is enough, no Setup tag required. The failure mode to watch for is the reverse: shipping a Switchboard tag
 while `SETUP_REF` still names an old Setup is not an error anything catches, it just means a Setup fix you
-already tagged does not reach users until the next Launcher release.
+already tagged does not reach users until the next Switchboard release.
 
 ## Cutting a mod release
 

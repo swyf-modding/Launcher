@@ -7,7 +7,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>How insistent a dialog is, which picks the glyph and its colour.</summary>
     internal enum DialogSeverity
@@ -19,7 +19,7 @@ namespace ScamWYF.Launcher
     }
 
     /// <summary>
-    /// The launcher's modal dialogs, built from the theme.
+    /// The switchboard's modal dialogs, built from the theme.
     /// </summary>
     /// <remarks>
     /// WPF's MessageBox is a Win32 dialog and cannot be themed, so a dark window would put a light grey

@@ -1,4 +1,4 @@
-<UserControl x:Class="ScamWYF.Launcher.Views.GetModsView"
+<UserControl x:Class="Switchboard.Views.GetModsView"
              xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="Transparent"

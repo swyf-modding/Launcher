@@ -7,7 +7,7 @@ using System.Reflection;
 using System.Text;
 using ScamWYF.Setup;
 
-namespace ScamWYF.Launcher.Tests
+namespace Switchboard.Tests
 {
     /// <summary>
     /// Exercises the parts of the Get mods tab that are safety-relevant or easy to get wrong, with no
@@ -35,7 +35,7 @@ namespace ScamWYF.Launcher.Tests
             LiveCatalogueRules();
             PostInstallRules();
             BepInExVersionRules();
-            LauncherUpdateRules();
+            SwitchboardUpdateRules();
             ModConfigFiles();
 
             Console.WriteLine();
@@ -644,7 +644,7 @@ namespace ScamWYF.Launcher.Tests
             Check("BepInEx would skip version '" + shown + "'", PluginScanner.BepInExWouldAccept(version), false);
         }
 
-        // ---------------------------------------------------------------- launcher updates
+        // ---------------------------------------------------------------- switchboard updates
 
         /// <summary>
         /// The update checker's version comparison, with no network.
@@ -655,9 +655,9 @@ namespace ScamWYF.Launcher.Tests
         /// not. Every shape build.ps1 actually stamps is here - tags, commits past a tag, prereleases,
         /// dirty trees and untagged builds.
         /// </remarks>
-        private static void LauncherUpdateRules()
+        private static void SwitchboardUpdateRules()
         {
-            Section("Launcher update comparison");
+            Section("Switchboard update comparison");
 
             // The ordinary cases.
             UpdateIsOffered("1.2.3", "v1.2.4");
@@ -693,15 +693,15 @@ namespace ScamWYF.Launcher.Tests
             Check("empty tag is not an update", UpdateChecker.IsUpdateAvailable("1.2.3", ""), false);
             Check("null tag is not an update", UpdateChecker.IsUpdateAvailable("1.2.3", null), false);
 
-            Section("Launcher release JSON");
+            Section("Switchboard release JSON");
 
             var release = UpdateChecker.ParseReleaseJson(
                 "{\"tag_name\": \"v1.5.1\", " +
-                "\"html_url\": \"https://github.com/swyf-modding/Launcher/releases/tag/v1.5.1\", " +
+                "\"html_url\": \"https://github.com/swyf-modding/Switchboard/releases/tag/v1.5.1\", " +
                 "\"assets\": []}");
             Check("reads the tag", release.TagName, "v1.5.1");
             Check("reads the page URL",
-                release.PageUrl, "https://github.com/swyf-modding/Launcher/releases/tag/v1.5.1");
+                release.PageUrl, "https://github.com/swyf-modding/Switchboard/releases/tag/v1.5.1");
 
             Throws("a reply with no tag is an error, not an empty release",
                 () => UpdateChecker.ParseReleaseJson("{\"html_url\": \"https://github.com/x\"}"));

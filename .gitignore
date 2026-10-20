@@ -6,7 +6,7 @@ obj/
 # tens of megabytes each, and reproducible from the commit - nothing here belongs in the repository.
 dist/
 
-# vendor\Mono.Cecil.dll is deliberately NOT ignored. It is no longer referenced by the launcher - Cecil
+# vendor\Mono.Cecil.dll is deliberately NOT ignored. It is no longer referenced by the switchboard - Cecil
 # is a NuGet package pulled in by ScamWYF.Setup.Core now - but the pinned copy is kept for the record and
 # is still excluded from ignore rules. See vendor\README.md.
 

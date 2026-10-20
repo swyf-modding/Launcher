@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    The launcher's tests.
+    The switchboard's tests.
 
-    These compile the app's own sources rather than a reference to the built launcher, which is the same
+    These compile the app's own sources rather than a reference to the built switchboard, which is the same
     choice the hand-rolled csc runner made and for the same reason: the tests exist to exercise GameInstall,
     PluginScanner, ModManager, Http, ModCatalogue and ModInstaller, and compiling those files directly
     means there is no second copy of the logic to drift out of step with the first.
@@ -14,14 +14,14 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- net10.0 to match the launcher and the Setup core it references. The project used to be net48
-         because there was no reason to be anything else; the launcher moved, so this follows. -->
+    <!-- net10.0 to match the switchboard and the Setup core it references. The project used to be net48
+         because there was no reason to be anything else; the switchboard moved, so this follows. -->
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <AssemblyName>Launcher.Tests</AssemblyName>
-    <RootNamespace>ScamWYF.Launcher.Tests</RootNamespace>
+    <AssemblyName>Switchboard.Tests</AssemblyName>
+    <RootNamespace>Switchboard.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <Deterministic>true</Deterministic>
     <!-- The default run is offline; -Online swaps which of the two programs is compiled. Both define a
@@ -31,7 +31,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The UI-free half of the launcher, named explicitly. Everything excluded here is a view, a dialog,
+    <!-- The UI-free half of the switchboard, named explicitly. Everything excluded here is a view, a dialog,
          or something else that needs Avalonia. Program.cs and Palette.cs are the Avalonia entry point and
          its resource lookups, so they are excluded for the same reason. -->
     <Compile Include="../src/**/*.cs"
@@ -39,7 +39,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The setup logic, compiled from the same source the launcher links. It also brings Mono.Cecil in as
+    <!-- The setup logic, compiled from the same source the switchboard links. It also brings Mono.Cecil in as
          a transitive package, which is what PluginScanner reads plugin metadata with. -->
     <ProjectReference Include="../../Setup/src/ScamWYF.Setup.Core/ScamWYF.Setup.Core.csproj" />
   </ItemGroup>

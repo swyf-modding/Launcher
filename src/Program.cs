@@ -1,7 +1,7 @@
 using System;
 using Avalonia;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>
     /// Process entry point.
@@ -13,7 +13,7 @@ namespace ScamWYF.Launcher
     /// <c>OnFrameworkInitializationCompleted</c> in <see cref="App"/> has somewhere to put the window
     /// it builds.
     ///
-    /// The arguments are forwarded rather than set aside: the launcher accepts a path to the game as
+    /// The arguments are forwarded rather than set aside: the switchboard accepts a path to the game as
     /// its first argument, which is how the tests and an unusual install point it at a folder.
     /// </remarks>
     internal static class Program

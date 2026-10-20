@@ -6,7 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 
-namespace ScamWYF.Launcher.Views
+namespace Switchboard.Views
 {
     /// <summary>One installed mod, shaped for the list. <see cref="Entry"/> is what the actions use.</summary>
     internal sealed class ModRow

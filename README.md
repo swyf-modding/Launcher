@@ -1,9 +1,9 @@
 <div align="center">
 
-# ScamWYF.Launcher
+# Switchboard
 
 ![license](https://img.shields.io/badge/license-MIT-blue)
-![version](https://img.shields.io/github/v/release/swyf-modding/Launcher?label=version)
+![version](https://img.shields.io/github/v/release/swyf-modding/Switchboard?label=version)
 ![game build](https://img.shields.io/badge/game-0.1.71--swyf-blue)
 ![framework](https://img.shields.io/badge/.NET-10-512BD4)
 
@@ -14,7 +14,7 @@
 ![Avalonia](https://img.shields.io/badge/Avalonia-8B44AC?style=for-the-badge&logo=avaloniaui&logoColor=white)
 ![Mono.Cecil](https://img.shields.io/badge/Mono.Cecil-0.11.6-9a3d3d?style=for-the-badge)
 
-> ⚠️ **Linux support is VERY experimental.** The launcher runs under Avalonia on Linux and drives the
+> ⚠️ **Linux support is VERY experimental.** The switchboard runs under Avalonia on Linux and drives the
 > same Setup Core under Proton, but this is validated on one machine only (NVIDIA + Wayland). Windows
 > is the mature path. Known Linux traps are listed in the Setup README (`winhttp=n,b`, `-whisper-cpu`).
 
@@ -46,7 +46,7 @@
 
 ## Overview
 
-**ScamWYF.Launcher** is an unofficial, community-built launcher and mod manager for **Scam With Your
+**Switchboard** is an unofficial, community-built mod manager for **Scam With Your
 Friends**. Four tabs: fix the install, manage mods, get mods, read the log. It runs on **Windows** and, for
 players on **Linux**, under **Proton** — the same one file on both.
 
@@ -68,7 +68,7 @@ players on **Linux**, under **Proton** — the same one file on both.
 - No redistributed game DLLs, decompiled game source, telemetry, or credential collection
 
 > [!IMPORTANT]
-> The launcher **never writes to your game folder without running the setup**. Everything on the
+> The switchboard **never writes to your game folder without running the setup**. Everything on the
 > Setup tab is that setup's own doing; everything on the Mods tab is a move or a delete between two
 > folders. If a step is refused, the reason is stated rather than attempted and failed.
 
@@ -91,8 +91,8 @@ This project is not affiliated with or endorsed by the developers or publisher o
   executable: the runtime is inside the file, so there is no .NET to install, no PowerShell to have, and
   no second download
 
-On Linux the game runs under Proton, and everything the launcher does there is the same work on the same
-game folder — it is Wine that needs one setting, and the launcher checks for it and tells you how to set
+On Linux the game runs under Proton, and everything the switchboard does there is the same work on the same
+game folder — it is Wine that needs one setting, and the switchboard checks for it and tells you how to set
 it. See [Playing on Linux](#playing-on-linux).
 
 Nothing else. [Setup](https://github.com/swyf-modding/Setup) used to be a second repository to clone
@@ -100,14 +100,13 @@ before this tool did anything; its setup logic and vendored binaries are inside 
 
 ### Installation
 
-1. Download the release for your platform — `ScamWYF.Launcher.exe` for Windows, `ScamWYF.Launcher` for
-   Linux.
-2. Run it. On Linux, make it executable first: `chmod +x ScamWYF.Launcher`.
+1. Download the release for your platform — `Switchboard.exe` for Windows, `Switchboard` for Linux.
+2. Run it. On Linux, make it executable first: `chmod +x Switchboard`.
 
 There is nothing to install, no second download, and **no folder to keep beside it**:
 
 ```text
-ScamWYF.Launcher        Windows: ScamWYF.Launcher.exe
+Switchboard        Windows: Switchboard.exe
 ```
 
 That is the whole download. The setup logic and the ~12 MB of corlib and Doorstop binaries it seeds into
@@ -117,8 +116,8 @@ partial download could have left out.
 ### Developer Setup
 
 ```bash
-git clone https://github.com/swyf-modding/Launcher.git
-cd Launcher
+git clone https://github.com/swyf-modding/Switchboard.git
+cd Switchboard
 dotnet build -c Release     # a complete build on its own
 ./build.sh                  # publish both platforms, one self-contained file each, into dist/
 ./build.sh --version 1.2.3  # stamp a version rather than reading the tag
@@ -128,9 +127,9 @@ dotnet build -c Release     # a complete build on its own
 On Windows the same thing is `.\build.ps1`, and it takes the same switches. Nothing else needs
 cloning — there is no Setup checkout to fetch and no vendored dll to stage.
 
-An SDK-style project — `Launcher.csproj` — like the mods. The only external dependency is
+An SDK-style project — `Switchboard.csproj` — like the mods. The only external dependency is
 [Mono.Cecil](https://github.com/jbevain/cecil), a NuGet package pulled in by `ScamWYF.Setup.Core`; the
-launcher's own code adds `Avalonia` and nothing else. `dotnet build -c Release` is a complete build of
+switchboard's own code adds `Avalonia` and nothing else. `dotnet build -c Release` is a complete build of
 the exe for the current platform; `build.sh`/`build.ps1` are thin wrappers around `dotnet publish` that
 add the three things a plain build cannot do — stamping the version from the nearest git tag, publishing
 **both** platforms in one run, and reducing the output to a single file in `dist/`.
@@ -181,7 +180,7 @@ was when the tab drove `setup.ps1`; the difference is that it is a method call, 
 This is why the exe is one file and there is no `Setup\` folder. The two things the setup cannot fetch at
 runtime — the unstripped BCL (about 12 MB) and the vendored Doorstop — are compiled into the assembly as
 **embedded resources** (`payload/corlib/...`, `payload/doorstop/...`), and `SetupPayload.ResolveDefault`
-reads them back. When the launcher is run from a source checkout, that same call finds the real `vendor/`
+reads them back. When the switchboard is run from a source checkout, that same call finds the real `vendor/`
 folder first, so a developer iterating on the corlib uses the files on disk rather than a stale embed.
 
 Two consequences worth stating plainly:
@@ -247,7 +246,7 @@ overlays. See below.
 
 #### Playing on Linux
 
-The game is a Windows build, so on Linux it runs under **Proton**, and the launcher does the Windows
+The game is a Windows build, so on Linux it runs under **Proton**, and the switchboard does the Windows
 work in the game folder as usual. One thing is different, and it is the thing that silently does nothing
 if it is missed: **Wine prefers its own `winhttp.dll` over the one Doorstop installs in the game folder**,
 so without an override Doorstop is never loaded and the game starts completely unmodded, with no error
@@ -266,7 +265,7 @@ The Setup tab shows a **Proton winhttp override** row on Linux, and **Play** set
 Proton prefix itself when it can — best effort, because that is only safe when a prefix already exists
 and Wine is not running. If it cannot, it says so and prints the launch option to paste. Steam discovery
 (`SteamEnvironment`) finds the game in every Steam library, including the Flatpak and the usual
-`~/.steam` and `~/.local/share/Steam` locations, so the launcher works without being told where the game
+`~/.steam` and `~/.local/share/Steam` locations, so the switchboard works without being told where the game
 is.
 
 ### Testing
@@ -279,17 +278,17 @@ is.
 On Windows the equivalent is `.\tools\test-getmods.ps1` with the same switches, and
 
 ```bash
-dotnet run --project tests/Launcher.Tests.csproj -c Release
+dotnet run --project tests/Switchboard.Tests.csproj -c Release
 ```
 
 is an equivalent command for the offline run. The two suites are separate programs rather than one with a
 filter (both define a `Main`, so `Online` is a compile-time switch), and both compile the app's own
-sources rather than referencing the built launcher — so the tests cannot pass against a stale copy of the
+sources rather than referencing the built switchboard — so the tests cannot pass against a stale copy of the
 logic.
 
 What is under test is the logic and the file operations: zip-slip refused in both the `/` and `\` forms, a
 checksum mismatch caught, a real download unpacked and planned, catalogue validation, HTTPS-only downloads
-with redirects checked by hand, config parse/validate/round-trip, and the launcher-update comparison.
+with redirects checked by hand, config parse/validate/round-trip, and the switchboard-update comparison.
 
 Not covered by tests, and honestly so: **the UI**. It is presentation, and these tests are about what
 happens to files on disk. What that leaves is checked by running it: Avalonia resolves styles, control
@@ -339,10 +338,10 @@ it was dropped here rather than carried forward as a second thing to reason abou
 repositories and are unchanged by this.
 
 The Linux support is the same game, the same BepInEx and the same files; what differs is that the game
-runs under Proton, and the winhttp override has to be in place for Doorstop to load. The launcher checks
+runs under Proton, and the winhttp override has to be in place for Doorstop to load. The switchboard checks
 for it and sets it where it can — see [Playing on Linux](#playing-on-linux).
 
-Other game builds are untested. The launcher probes what it finds rather than assuming a layout, so an
+Other game builds are untested. The switchboard probes what it finds rather than assuming a layout, so an
 unexpected build will usually still work — it just reports what it actually sees.
 
 ---
@@ -371,7 +370,7 @@ both of which matter for a tool whose job includes deleting mods.
 ## Project Structure
 
 ```text
-Launcher.csproj        The project: net10.0 + Avalonia, referencing ScamWYF.Setup.Core
+Switchboard.csproj      The project: net10.0 + Avalonia, referencing ScamWYF.Setup.Core
 src/
 |-- Program.cs         The Avalonia entry point (BuildAvaloniaApp / StartWithClassicDesktopLifetime)
 |-- App.xaml(.cs)      Application resources, the theme include, and the unhandled-exception reporter
@@ -387,7 +386,7 @@ src/
 |-- Http.cs            The only code that touches the network: https only, redirects checked by hand
 |-- ModCatalogue.cs    The mod list, live from ModCatalogue with a built-in fallback, and what GitHub says each latest release is
 |-- ModInstaller.cs    Download, unpack, verify, and only then install
-|-- UpdateChecker.cs   Is a newer launcher released? - the tag comparison behind the update bar
+|-- UpdateChecker.cs   Is a newer switchboard released? - the tag comparison behind the update bar
 |-- ScriptRunner.cs    Running a mod's optional post-install script, and collecting what it prints
 `-- views/
     |-- SetupView      The Setup tab
@@ -400,7 +399,7 @@ build.ps1              The same, on Windows
 tools/
 |-- test-getmods.ps1   Tests for the above; -Online also exercises a real download
 `-- test-getmods.sh    The same, on Linux
-tests/                 Launcher.Tests.csproj, GetModsTests.cs (offline), OnlineModTests.cs (needs network)
+tests/                 Switchboard.Tests.csproj, GetModsTests.cs (offline), OnlineModTests.cs (needs network)
 vendor/                A pinned Mono.Cecil copy, kept for the record; the build gets Cecil from NuGet
 ```
 
@@ -408,18 +407,18 @@ vendor/                A pinned Mono.Cecil copy, kept for the record; the build 
 each self-contained with the setup logic and payload embedded. See [How setup runs](#how-setup-runs).
 
 `GameInstall` and the setup itself are not in `src/` any more. They live in `ScamWYF.Setup.Core`, which
-this project references and which the CLI and the tests share; the launcher presents that code rather than
-duplicating it. The removed `GameInstall.cs` and `SetupRunner.cs` were the launcher's old copies, and they
+this project references and which the CLI and the tests share; the switchboard presents that code rather than
+duplicating it. The removed `GameInstall.cs` and `SetupRunner.cs` were the switchboard's old copies, and they
 are gone rather than kept alongside the Core ones, so there is no second definition to drift.
 
 The split between `src/` and `src/views/` is the UI-free half against the UI. Everything the tests compile
-is the former (plus the referenced Core), which is why `tests/Launcher.Tests.csproj` builds a test binary
+is the former (plus the referenced Core), which is why `tests/Switchboard.Tests.csproj` builds a test binary
 with no Avalonia in it.
 
 ### How it looks
 
 Dark, low-chroma, and the same palette the in-game menu uses — mod-lib's `UiTheme`, which reads the game's
-live colours and falls back to these. So the launcher and the menu it opens are one system rather than
+live colours and falls back to these. So the switchboard and the menu it opens are one system rather than
 two, and there is one file to change rather than a set of greys scattered through four tabs.
 
 Everything visual is a `Style`, a `ControlTheme` or a resource in `Theme.xaml`, over Avalonia's
@@ -469,8 +468,8 @@ actually load. Replacing something already installed gets a second confirmation,
 
 **Where the list comes from.** The tab fetches `mods.json` from the
 [ModCatalogue](https://github.com/swyf-modding/ModCatalogue) repository on every check, so adding a mod
-means editing that file rather than cutting a launcher release. If the fetch fails — offline, rate
-limited — the tab falls back to the list compiled into the launcher and says so on the status line.
+means editing that file rather than cutting a switchboard release. If the fetch fails — offline, rate
+limited — the tab falls back to the list compiled into the switchboard and says so on the status line.
 Entries may point at repositories outside `swyf-modding`; those are marked with their owner in the list
 and named again in the install confirmation, because there is no shared review behind them.
 
@@ -521,7 +520,7 @@ Hitting it says so, rather than reporting a generic failure.
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request: build, run the
 offline tests, `./build.sh` to publish both platforms, confirm each is a single self-contained file, and
-upload `dist/`. That is possible because the launcher needs no game to build — the setup is a library
+upload `dist/`. That is possible because the switchboard needs no game to build — the setup is a library
 reference and its payload is embedded — so the runner only needs this repository and a checkout of Setup
 to compile against.
 
@@ -548,7 +547,7 @@ git push origin v1.2.3
 
 [`.github/workflows/release.yml`](.github/workflows/release.yml) builds the tagged commit and publishes a
 GitHub release with generated notes. What it publishes is the output of `build.sh`/`build.ps1`: one
-self-contained file per platform, `ScamWYF.Launcher` and `ScamWYF.Launcher.exe`.
+self-contained file per platform, `Switchboard` and `Switchboard.exe`.
 
 Three checks stand between a tag and a published binary, because a wrong version in a release is worse
 than no release:

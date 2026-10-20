@@ -8,7 +8,7 @@ using Avalonia.Input;
 using Avalonia.Threading;
 using ScamWYF.Setup;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>
     /// The main window: the four tabs, a status line, and the Play button.
@@ -18,12 +18,12 @@ namespace ScamWYF.Launcher
     ///
     /// The game is launched from here rather than from Steam deliberately. On Windows the exe is started
     /// directly, which skips Steam's own wrapper - and this game has not been observed to care. On Linux
-    /// the game is a Windows build under Proton, so the launcher asks Steam to start it instead, since
+    /// the game is a Windows build under Proton, so the switchboard asks Steam to start it instead, since
     /// that keeps the user's Proton version, the Steam runtime and the overlay intact; the winhttp
     /// override the loader needs is put in place first when it can be.
     ///
     /// The setup itself no longer shells out to PowerShell. It runs in-process through ScamWYF.Setup.Core,
-    /// so the launcher, the CLI and the tests all execute the same code, and the log the window shows is
+    /// so the switchboard, the CLI and the tests all execute the same code, and the log the window shows is
     /// the setup's own log rather than a process's stdout.
     ///
     /// This type also acts as the host that the four views talk to. That is the same shape the WinForms
@@ -45,7 +45,7 @@ namespace ScamWYF.Launcher
         private bool _shown;
         private int _lastShownTab = -1;
 
-        private LauncherRelease _latestRelease;
+        private SwitchboardRelease _latestRelease;
         private volatile bool _checkingUpdates;
 
         public MainWindow(string[] args)
@@ -73,7 +73,7 @@ namespace ScamWYF.Launcher
         /// </summary>
         /// <remarks>
         /// The informational version, not the assembly version, because the build fills the former from
-        /// the git tag and it carries the commit - "which launcher are you on" is a support question
+        /// the git tag and it carries the commit - "which switchboard are you on" is a support question
         /// and the commit is the answer. Falls back to the assembly version, which is all a build with
         /// no tag behind it has.
         /// </remarks>
@@ -105,7 +105,7 @@ namespace ScamWYF.Launcher
             SetupPage.Reload();
             ModsPage.Reload();
 
-            CheckForLauncherUpdate(true);
+            CheckForSwitchboardUpdate(true);
         }
 
         /// <summary>
@@ -273,7 +273,7 @@ namespace ScamWYF.Launcher
         }
 
         /// <summary>
-        /// Ask GitHub whether a newer launcher release exists.
+        /// Ask GitHub whether a newer switchboard release exists.
         /// </summary>
         /// <remarks>
         /// Off the UI thread, because it is a network round trip and the window has just opened - hanging
@@ -283,13 +283,13 @@ namespace ScamWYF.Launcher
         /// modal about it would scold everyone who opens the tool offline. A manual check reports whatever
         /// it found on the status line, because the button was pressed and an answer is owed.
         /// </remarks>
-        public void CheckForLauncherUpdate(bool automatic)
+        public void CheckForSwitchboardUpdate(bool automatic)
         {
             if (_checkingUpdates) return;
             _checkingUpdates = true;
             CheckUpdatesButton.IsEnabled = false;
 
-            if (!automatic) Status("Checking GitHub for a newer launcher release...", true);
+            if (!automatic) Status("Checking GitHub for a newer switchboard release...", true);
 
             new Thread(delegate ()
             {
@@ -307,11 +307,11 @@ namespace ScamWYF.Launcher
                         if (newer)
                         {
                             _latestRelease = latest;
-                            UpdateText.Text = "Launcher " + latest.TagName + " is available on GitHub " +
+                            UpdateText.Text = "Switchboard " + latest.TagName + " is available on GitHub " +
                                               "(you have " + current + "). Download the zip and unpack it " +
                                               "over this one - your game install is untouched.";
                             UpdateBar.IsVisible = true;
-                            Status("Launcher " + latest.TagName + " is available - see the bar above.", true);
+                            Status("Switchboard " + latest.TagName + " is available - see the bar above.", true);
                         }
                         else if (!automatic)
                         {
@@ -340,7 +340,7 @@ namespace ScamWYF.Launcher
 
         private void OnCheckUpdates(object sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
-            CheckForLauncherUpdate(false);
+            CheckForSwitchboardUpdate(false);
         }
 
         private void OnViewRelease(object sender, Avalonia.Interactivity.RoutedEventArgs e)

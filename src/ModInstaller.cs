@@ -6,7 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using ScamWYF.Setup;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>One file that would be written, and what is already there.</summary>
     internal sealed class InstallStep

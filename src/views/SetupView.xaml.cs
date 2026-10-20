@@ -7,7 +7,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ScamWYF.Setup;
 
-namespace ScamWYF.Launcher.Views
+namespace Switchboard.Views
 {
     /// <summary>One line of the setup status table.</summary>
     internal sealed class CheckRow
@@ -68,7 +68,7 @@ namespace ScamWYF.Launcher.Views
             _rows.Add(new CheckRow("BepInEx", install.HasBepInEx,
                 install.HasBepInEx ? install.BepInExCore : "not installed"));
 
-            // The launcher check, unlike the five above it. Those are facts about the game install;
+            // The switchboard check, unlike the five above it. Those are facts about the game install;
             // this one is a fact about this download, and it is the only way to tell a complete build
             // from a partial one. The payload is embedded in the exe (or read from vendor\ during
             // development), so there is no Setup\ folder beside it to go missing any more.
@@ -146,7 +146,7 @@ namespace ScamWYF.Launcher.Views
             // the worker MainWindow started. Reading a control off the UI thread throws, and an unhandled
             // exception on a thread-pool thread does not raise a dialog - it terminates the process. That
             // is not a hypothetical: reading the follow checkbox here is what made "Set up / repair" kill
-            // the launcher outright, after a green build, because nothing else in the pipeline ever ran
+            // the switchboard outright, after a green build, because nothing else in the pipeline ever ran
             // a setup.
             Host.RunSetup(offline,
                 line => OnUi(delegate

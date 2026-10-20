@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using Mono.Cecil;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>
     /// Reads what each plugin file in BepInEx\plugins claims to be, without running any of it.

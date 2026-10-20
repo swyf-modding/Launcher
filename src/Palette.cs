@@ -3,10 +3,10 @@ using Avalonia;
 using Avalonia.Media;
 using Avalonia.Styling;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>
-    /// The launcher's palette, read out of the resource dictionary by key.
+    /// The switchboard's palette, read out of the resource dictionary by key.
     /// </summary>
     /// <remarks>
     /// WPF resolved these with <c>Application.Current.FindResource(key)</c> and an unchecked cast to
@@ -56,7 +56,7 @@ namespace ScamWYF.Launcher
         /// <remarks>
         /// Null rather than a fallback, unlike <see cref="Brush"/>: a control with no theme still draws
         /// with its stock one, which is the right behaviour for a dialog built in code that cannot find
-        /// the launcher's own button theme. Handing back a substituted theme would be inventing one.
+        /// the switchboard's own button theme. Handing back a substituted theme would be inventing one.
         /// </remarks>
         public static ControlTheme ControlTheme(string key)
         {

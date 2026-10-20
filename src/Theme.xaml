@@ -1,8 +1,8 @@
 <!--
-    The launcher's palette and control styles.
+    The switchboard's palette and control styles.
 
     The colours are mod-lib's UiTheme, which the shared library reads from the game's live theme and
-    falls back to these. So the launcher and the in-game menu it opens are one visual system rather than
+    falls back to these. So the switchboard and the in-game menu it opens are one visual system rather than
     two, and if the game ever changes its colours there is one file to change instead of a set of
     hard-coded greys scattered across four views.
 

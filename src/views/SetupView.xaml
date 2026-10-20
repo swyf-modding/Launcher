@@ -1,4 +1,4 @@
-<UserControl x:Class="ScamWYF.Launcher.Views.SetupView"
+<UserControl x:Class="Switchboard.Views.SetupView"
              xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="Transparent"

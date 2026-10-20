@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Builds ScamWYF.Launcher: one self-contained single file per platform, into dist/.
+# Builds Switchboard: one self-contained single file per platform, into dist/.
 #
 #   ./build.sh
 #   ./build.sh --configuration Debug
@@ -9,12 +9,12 @@
 #
 # What this adds over `dotnet publish`
 # ------------------------------------
-#   dotnet publish Launcher.csproj -c Release -r linux-x64 --self-contained true \
+#   dotnet publish Switchboard.csproj -c Release -r linux-x64 --self-contained true \
 #       -p:PublishSingleFile=true
 #
 # is a complete, equivalent command for one platform's file. What this script adds is the version
 # stamped from the nearest git tag, both platforms' files in one run, and one predictable dist/ layout
-# for a release to zip: dist/linux-x64/ScamWYF.Launcher and dist/win-x64/ScamWYF.Launcher.exe.
+# for a release to zip: dist/linux-x64/Switchboard and dist/win-x64/Switchboard.exe.
 #
 # There is no Setup folder beside the exe any more. The Setup tab runs the setup in-process, through
 # ScamWYF.Setup.Core, and the 12 MB of corlib and Doorstop it needs is compiled into the executable as
@@ -55,7 +55,7 @@ if [ "${#runtimes[@]}" -eq 0 ]; then
 fi
 
 if ! command -v dotnet >/dev/null 2>&1; then
-    echo "dotnet was not found on PATH. The launcher is built with the .NET SDK:" >&2
+    echo "dotnet was not found on PATH. The switchboard is built with the .NET SDK:" >&2
     echo "  https://dotnet.microsoft.com/download" >&2
     exit 1
 fi
@@ -150,13 +150,13 @@ fi
 
 # ---------------------------------------------------------------- build
 
-echo "=== building ScamWYF.Launcher"
+echo "=== building Switchboard"
 echo "  sdk:      $(dotnet --version)"
 echo "  config:   $configuration"
 echo "  version:  $VERSION_INFORMATIONAL"
 echo "  runtimes: ${runtimes[*]}"
 
-project="$repo_root/Launcher.csproj"
+project="$repo_root/Switchboard.csproj"
 dist="$repo_root/dist"
 
 for rid in "${runtimes[@]}"; do

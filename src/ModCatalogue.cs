@@ -4,7 +4,7 @@ using System.IO;
 using System.Text.Json;
 using ScamWYF.Setup;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>Which BepInEx folder a file belongs in.</summary>
     internal enum ModFolder
@@ -171,11 +171,11 @@ namespace ScamWYF.Launcher
     /// <remarks>
     /// A short list rather than a search, and that is the point. A list is reviewed: every entry names a
     /// repository someone chose to put there. A search box over arbitrary mod sites would be a different
-    /// tool with a different set of risks, and nothing in this launcher should imply that a mod came from
+    /// tool with a different set of risks, and nothing in this switchboard should imply that a mod came from
     /// here just because it was easy to fetch.
     ///
     /// The list itself is fetched live from the ModCatalogue repository rather than compiled in, so adding
-    /// a mod no longer needs a launcher release. The compiled-in list below remains as the offline
+    /// a mod no longer needs a switchboard release. The compiled-in list below remains as the offline
     /// fallback: if the fetch fails, the tab shows what it has always shown and says so. Entries may name
     /// repositories outside the project's own organisation; those are marked as third-party wherever they
     /// appear, because unlike the list there is no shared review behind them.
@@ -195,7 +195,7 @@ namespace ScamWYF.Launcher
         internal const string DefaultOwner = "swyf-modding";
 
         /// <summary>Where the live mod list lives. A branch, not a tag: catalogue edits reach users
-        /// without a launcher release, which is the point of fetching it instead of compiling it in.</summary>
+        /// without a switchboard release, which is the point of fetching it instead of compiling it in.</summary>
         internal const string CatalogueUrl =
             "https://raw.githubusercontent.com/swyf-modding/ModCatalogue/main/mods.json";
 
@@ -310,8 +310,8 @@ namespace ScamWYF.Launcher
                 var schema = Number(root, "schemaVersion");
                 if (schema != 1)
                 {
-                    throw new IOException("The mod list uses schema version " + schema + ", which this launcher " +
-                                          "does not understand. Update the launcher to read it");
+                    throw new IOException("The mod list uses schema version " + schema + ", which this switchboard " +
+                                          "does not understand. Update the switchboard to read it");
                 }
 
                 if (!root.TryGetProperty("mods", out var raw) || raw.ValueKind != JsonValueKind.Array)
@@ -324,7 +324,7 @@ namespace ScamWYF.Launcher
                 if (count > 64)
                 {
                     throw new IOException("The mod list names " + count + " mods, which is more than " +
-                                          "the 64 this launcher will consider");
+                                          "the 64 this switchboard will consider");
                 }
 
                 var sources = new List<ModSource>(count);
@@ -400,7 +400,7 @@ namespace ScamWYF.Launcher
         /// </summary>
         /// <remarks>
         /// Capped at four: these are prompts a person answers one by one after installing, and a mod
-        /// with more setup steps than that has a setup problem no launcher dialog will fix.
+        /// with more setup steps than that has a setup problem no switchboard dialog will fix.
         /// </remarks>
         private static PostInstallStep[] ParsePostInstall(JsonElement entry, string where)
         {
@@ -445,7 +445,7 @@ namespace ScamWYF.Launcher
                 script.IndexOfAny(NameSeparators) >= 0 ||
                 !script.Trim().EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
             {
-                throw new IOException("The mod list's " + which + " names no script this launcher will run");
+                throw new IOException("The mod list's " + which + " names no script this switchboard will run");
             }
 
             var description = Text(step, "description");
@@ -476,7 +476,7 @@ namespace ScamWYF.Launcher
                 name.Trim() == "." || name.Trim() == ".." ||
                 !name.Trim().EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
             {
-                throw new IOException("The mod list's " + where + " names a file this launcher will not install");
+                throw new IOException("The mod list's " + where + " names a file this switchboard will not install");
             }
 
             var folderText = Text(file, "folder");

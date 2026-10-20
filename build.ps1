@@ -1,17 +1,17 @@
 <#
-    Builds ScamWYF.Launcher: one self-contained single file per platform, into dist\.
+    Builds Switchboard: one self-contained single file per platform, into dist\.
 
     A thin wrapper around `dotnet publish`. The project is a normal SDK-style csproj, so the publish is
     not done by hand here:
 
-        dotnet publish Launcher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+        dotnet publish Switchboard.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 
     is a complete, equivalent command for one platform's file. What this script adds is the version
     stamped from the nearest git tag, both platforms' files in one run, and one predictable dist\ layout
     for a release to zip:
 
-        dist\linux-x64\ScamWYF.Launcher
-        dist\win-x64\ScamWYF.Launcher.exe
+        dist\linux-x64\Switchboard
+        dist\win-x64\Switchboard.exe
 
         .\build.ps1
         .\build.ps1 -Configuration Debug
@@ -20,11 +20,11 @@
 
     There is no Setup folder beside the exe any more
     -------------------------------------------------
-    The launcher used to ship three things: the exe, Mono.Cecil.dll, and a Setup\ folder holding
+    The switchboard used to ship three things: the exe, Mono.Cecil.dll, and a Setup\ folder holding
     Setup's PowerShell scripts and the ~12 MB of corlib and Doorstop binaries they seeded into the
     game. The Setup tab ran those scripts and streamed their output.
 
-    It does not any more. The setup runs in-process, in-process in the launcher, through
+    It does not any more. The setup runs in-process, in-process in the switchboard, through
     ScamWYF.Setup.Core - the same library the CLI and the tests use - so there are no PowerShell
     scripts to stage and no SETUP-VERSION.txt to record. The corlib and Doorstop those steps need are
     compiled into the executable as embedded resources, so the download really is one file, and this
@@ -50,14 +50,14 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = $PSScriptRoot
-$project = Join-Path $repoRoot 'Launcher.csproj'
+$project = Join-Path $repoRoot 'Switchboard.csproj'
 $dist = Join-Path $repoRoot 'dist'
 
 # ---------------------------------------------------------------- version
 
 # A released binary should be able to say where it came from. The version is read from the nearest git
 # tag rather than typed into a source file, because a number in a source file drifts: the READMEs and
-# the [BepInPlugin] attributes all showed 1.0.0 long after the dll changed, and the launcher reads
+# the [BepInPlugin] attributes all showed 1.0.0 long after the dll changed, and the switchboard reads
 # those attributes back out to show the user, so a stale one is not merely untidy - it is visible.
 #
 # AssemblyVersion and AssemblyFileVersion must be numeric, because the CLR rejects "1.0.0-beta.1" and
@@ -172,13 +172,13 @@ if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
     throw @"
 dotnet was not found on PATH.
 
-The launcher is built with the .NET SDK, which is also what builds the mods in this project:
+The switchboard is built with the .NET SDK, which is also what builds the mods in this project:
 
   https://dotnet.microsoft.com/download
 "@
 }
 
-Write-Host "=== building ScamWYF.Launcher"
+Write-Host "=== building Switchboard"
 Write-Host "  sdk:      $((& dotnet --version).Trim())"
 Write-Host "  config:   $Configuration"
 Write-Host "  version:  $($versionInfo.Informational)"
@@ -186,11 +186,11 @@ Write-Host "  runtimes: $($Runtime -join ' ')"
 
 # Checked before the build rather than after it. MSBuild retries a locked output file ten times over
 # about ten seconds and then fails with MSB3021, which says the file is locked but not by what. The
-# usual cause is a launcher still open from last time, which is worth naming.
-$running = @(Get-Process -Name 'ScamWYF.Launcher' -ErrorAction SilentlyContinue)
+# usual cause is a switchboard still open from last time, which is worth naming.
+$running = @(Get-Process -Name 'Switchboard' -ErrorAction SilentlyContinue)
 if ($running.Count) {
     throw @"
-A ScamWYF.Launcher process is still running (PID $($running.Id -join ', ')), and it has the published file open.
+A Switchboard process is still running (PID $($running.Id -join ', ')), and it has the published file open.
 
 Close it and build again. The file cannot be replaced while it is running.
 "@
@@ -221,7 +221,7 @@ foreach ($rid in $Runtime) {
         -p:FileVersion="$($versionInfo.Numeric)" `
         -p:InformationalVersion="$($versionInfo.Informational)"
 
-    if ($LASTEXITCODE -ne 0) { throw "ScamWYF.Launcher failed to publish for $rid (exit $LASTEXITCODE)" }
+    if ($LASTEXITCODE -ne 0) { throw "Switchboard failed to publish for $rid (exit $LASTEXITCODE)" }
 }
 
 # ---------------------------------------------------------------- report

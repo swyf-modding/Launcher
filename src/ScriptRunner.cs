@@ -4,13 +4,13 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>
     /// Runs a mod's optional setup script after installing, and streams what it says.
     /// </summary>
     /// <remarks>
-    /// This is the half of the old launcher SetupRunner that still ran PowerShell: the setup flow
+    /// This is the half of the old switchboard SetupRunner that still ran PowerShell: the setup flow
     /// itself now runs in-process through ScamWYF.Setup.Core, but a mod can still ship a .ps1 that
     /// configures something per machine, and that is still a script rather than a library call.
     ///
@@ -112,7 +112,7 @@ namespace ScamWYF.Launcher
         /// <remarks>
         /// Windows PowerShell first on Windows, because every Windows machine has it without installing
         /// anything, then PowerShell 7. On Linux and macOS only pwsh exists. If neither is present,
-        /// Process.Start throws and the caller reports it rather than the launcher failing to start.
+        /// Process.Start throws and the caller reports it rather than the switchboard failing to start.
         /// </remarks>
         private static string PowerShellPath()
         {

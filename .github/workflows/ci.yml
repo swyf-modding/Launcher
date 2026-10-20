@@ -1,12 +1,12 @@
 name: ci
 
-# Builds, tests and publishes the launcher.
+# Builds, tests and publishes the switchboard.
 #
 # Unlike the mods, this repo does not need the game: the setup is a library reference
 # (ScamWYF.Setup.Core) and the ~12 MB of corlib and Doorstop it seeds are embedded in the executable, so a
 # hosted runner has everything it needs and there is nothing to stage beside the exe.
 #
-# It does need Setup's source, because the launcher compiles against it. Setup is checked out as a sibling
+# It does need Setup's source, because the switchboard compiles against it. Setup is checked out as a sibling
 # of this repository, which is where the ProjectReference (../Setup/src/ScamWYF.Setup.Core) looks for it.
 #
 # There is no game-side UI pass here yet. The WPF build had a Windows-only UI-automation pass - require a
@@ -15,7 +15,7 @@ name: ci
 # and that both platforms publish as one self-contained file each.
 
 env:
-  # The Setup commit the launcher is compiled against. A tag, not a branch, so a release is
+  # The Setup commit the switchboard is compiled against. A tag, not a branch, so a release is
   # reproducible: "whatever Setup's main pointed at this morning" is not a release input. Bump it when a
   # Setup change should reach users; release.yml pins the same value.
   SETUP_REF: v1.0.2
@@ -32,12 +32,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out Launcher
+      - name: Check out Switchboard
         uses: actions/checkout@v4
         with:
-          path: Launcher
+          path: Switchboard
 
-      # A sibling of Launcher\, which is where the ProjectReference looks for it.
+      # A sibling of Switchboard\, which is where the ProjectReference looks for it.
       - name: Check out Setup
         uses: actions/checkout@v4
         with:
@@ -51,27 +51,27 @@ jobs:
           dotnet-version: '10.x'
 
       - name: Build
-        working-directory: Launcher
-        run: dotnet build Launcher.csproj -c Release
+        working-directory: Switchboard
+        run: dotnet build Switchboard.csproj -c Release
 
       - name: Run the offline tests
-        working-directory: Launcher
+        working-directory: Switchboard
         run: ./tools/test-getmods.sh
 
       # Both platforms from one run, the same command a developer runs. The version is stamped from the
       # tag when the checkout has one, and from the commit otherwise.
       - name: Publish
-        working-directory: Launcher
+        working-directory: Switchboard
         run: ./build.sh
 
       # A self-contained file carries the runtime and the embedded setup payload, so it is tens of
       # megabytes. A framework-dependent stub is tens of kilobytes, and shipping one silently is the
       # failure this check exists to catch.
       - name: Confirm each platform is one self-contained file
-        working-directory: Launcher
+        working-directory: Switchboard
         run: |
           set -euo pipefail
-          for file in dist/linux-x64/ScamWYF.Launcher dist/win-x64/ScamWYF.Launcher.exe; do
+          for file in dist/linux-x64/Switchboard dist/win-x64/Switchboard.exe; do
             [ -f "$file" ] || { echo "missing $file" >&2; exit 1; }
             size=$(stat -c%s "$file")
             if [ "$size" -lt 20000000 ]; then
@@ -86,6 +86,6 @@ jobs:
         # files a release would publish available from the run that verified them.
         uses: actions/upload-artifact@v4
         with:
-          name: ScamWYF.Launcher
-          path: Launcher/dist/
+          name: Switchboard
+          path: Switchboard/dist/
           if-no-files-found: error

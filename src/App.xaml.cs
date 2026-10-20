@@ -5,18 +5,18 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>
     /// Process entry point for the UI.
     /// </summary>
     /// <remarks>
-    /// The window is built here rather than from a StartupUri, because the launcher accepts a path to
+    /// The window is built here rather than from a StartupUri, because the switchboard accepts a path to
     /// the game as its first argument and there is no way to pass arguments to a window's constructor
     /// from markup.
     ///
     /// Unhandled exceptions are reported rather than left to the default handler, which in a windowed
-    /// build means a crash with no window at all and nothing a player would ever look at. A launcher
+    /// build means a crash with no window at all and nothing a player would ever look at. A switchboard
     /// that fails should say so in words.
     /// </remarks>
     public partial class App : Application
@@ -65,7 +65,7 @@ namespace ScamWYF.Launcher
         /// <remarks>
         /// The outermost message is often useless on its own - "Unable to resolve property" says only
         /// that something in the XAML is wrong, not what - so this walks to the innermost cause and
-        /// keeps a few stack frames to say where it came from. A launcher that fails silently is worse
+        /// keeps a few stack frames to say where it came from. A switchboard that fails silently is worse
         /// than one that fails loudly.
         /// </remarks>
         internal static string Describe(Exception error)

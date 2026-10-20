@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
-namespace ScamWYF.Launcher
+namespace Switchboard
 {
     /// <summary>
     /// One mod BepInEx found on disk: where it came from, and what it says it is.
