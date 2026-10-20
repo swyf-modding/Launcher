@@ -1,13 +1,18 @@
 <!--
     The switchboard's palette and control styles.
 
-    The colours are mod-lib's UiTheme, which the shared library reads from the game's live theme and
-    falls back to these. So the switchboard and the in-game menu it opens are one visual system rather than
-    two, and if the game ever changes its colours there is one file to change instead of a set of
-    hard-coded greys scattered across four views.
+    These are the website's colours, the same tokens the site defines in src/theme.css: warm brown
+    ground, cream text, gold for the things that are actionable, wood and paper for the two surfaces
+    that are meant to be noticed. The app and the site are one product, so they are one look - the
+    site is where a player meets the tool, and the app should not look like a different program.
 
-    Dark and low-chroma on purpose: a tool that sits in front of a game should recede. It is mostly read
-    at a glance to answer "is my install fine".
+    The colours are also mod-lib's UiTheme fallback, which the shared library reads from the game's
+    live theme and falls back to when it cannot. So the switchboard, the in-game menu it opens and the
+    site are one visual system rather than three, and if the game ever changes its colours there is
+    one file to change instead of a set of hard-coded greys scattered across four views.
+
+    Warm and low-chroma on purpose: a tool that sits in front of a game should recede. It is mostly
+    read at a glance to answer "is my install fine".
 
     This is Avalonia, not WPF, and the shape of the file changed with it. FluentTheme supplies every
     control's control theme (see App.xaml), and everything here is layered on top: plain styles win over
@@ -27,20 +32,59 @@
 
         <!-- ======================================================== palette -->
 
-        <Color x:Key="WindowColor">#212126</Color>
-        <Color x:Key="SurfaceColor">#2B2B32</Color>
-        <Color x:Key="SurfaceShadedColor">#26262C</Color>
-        <Color x:Key="FieldColor">#15151A</Color>
-        <Color x:Key="TextColor">#E6E6EA</Color>
-        <Color x:Key="MutedColor">#9E9EAA</Color>
-        <Color x:Key="BorderColor">#3A3A44</Color>
-        <Color x:Key="ButtonFaceColor">#383842</Color>
-        <Color x:Key="ButtonHoverColor">#4C4C58</Color>
-        <Color x:Key="AccentColor">#296BB8</Color>
-        <Color x:Key="AccentMutedColor">#243044</Color>
-        <Color x:Key="GoodColor">#5FC18A</Color>
-        <Color x:Key="WarnColor">#F3C259</Color>
-        <Color x:Key="BadColor">#F36B66</Color>
+        <!--
+            The site's tokens, under the names this file has always used. The site spells them
+            bg, surface, gold and so on; the app's names are older, so the mapping is
+            spelled out here rather than left to be rediscovered.
+        -->
+
+        <!-- bg            the page ground -->
+        <Color x:Key="WindowColor">#140E0B</Color>
+        <!-- surface       a panel on the ground -->
+        <Color x:Key="SurfaceColor">#1D1511</Color>
+        <!-- raised        a panel on a panel -->
+        <Color x:Key="SurfaceShadedColor">#271C16</Color>
+        <!-- line          a hairline border -->
+        <Color x:Key="BorderColor">#3D2F26</Color>
+        <!-- line-soft     the quieter rule between rows -->
+        <Color x:Key="LineSoftColor">#2F241D</Color>
+        <!-- the site's input ground, a shade below the page -->
+        <Color x:Key="FieldColor">#120D0B</Color>
+
+        <!-- cream         body text -->
+        <Color x:Key="TextColor">#F3E2C0</Color>
+        <!-- cream-dim     secondary text -->
+        <Color x:Key="MutedColor">#CDB98F</Color>
+        <!-- muted         the most recessive text there is -->
+        <Color x:Key="FaintColor">#A8956F</Color>
+
+        <!-- gold          the actionable colour -->
+        <Color x:Key="AccentColor">#E6AB3E</Color>
+        <!-- gold-hi       gold, lit -->
+        <Color x:Key="AccentHiColor">#F2BF5A</Color>
+        <!-- gold-dim      gold, at a distance: a border rather than a fill -->
+        <Color x:Key="AccentDimColor">#7A5A2E</Color>
+        <!-- gold-deep     the shadow under a gold button -->
+        <Color x:Key="AccentDeepColor">#8A5A14</Color>
+        <!-- gold at a whisper: a selected row, a checked chip -->
+        <Color x:Key="AccentMutedColor">#2E2210</Color>
+
+        <!-- wood          the sign: the one loud surface -->
+        <Color x:Key="WoodColor">#5B3419</Color>
+        <!-- wood-deep     its border -->
+        <Color x:Key="WoodDeepColor">#3A2110</Color>
+        <!-- wood-active   the sign, pressed -->
+        <Color x:Key="WoodActiveColor">#7A4D1C</Color>
+
+        <!-- paper         a sticky note: the one bright surface -->
+        <Color x:Key="PaperColor">#F1DFA8</Color>
+        <!-- paper-ink     the writing on it -->
+        <Color x:Key="PaperInkColor">#2A1A0A</Color>
+
+        <!-- ok, warn, danger -->
+        <Color x:Key="GoodColor">#7FD99A</Color>
+        <Color x:Key="WarnColor">#F0A15A</Color>
+        <Color x:Key="BadColor">#FF7A66</Color>
 
         <SolidColorBrush x:Key="WindowBrush"        Color="{StaticResource WindowColor}" />
         <SolidColorBrush x:Key="SurfaceBrush"       Color="{StaticResource SurfaceColor}" />
@@ -48,24 +92,55 @@
         <SolidColorBrush x:Key="FieldBrush"         Color="{StaticResource FieldColor}" />
         <SolidColorBrush x:Key="TextBrush"          Color="{StaticResource TextColor}" />
         <SolidColorBrush x:Key="MutedBrush"         Color="{StaticResource MutedColor}" />
+        <SolidColorBrush x:Key="FaintBrush"         Color="{StaticResource FaintColor}" />
         <SolidColorBrush x:Key="BorderBrush"        Color="{StaticResource BorderColor}" />
-        <SolidColorBrush x:Key="ButtonFaceBrush"    Color="{StaticResource ButtonFaceColor}" />
-        <SolidColorBrush x:Key="ButtonHoverBrush"   Color="{StaticResource ButtonHoverColor}" />
+        <SolidColorBrush x:Key="LineSoftBrush"      Color="{StaticResource LineSoftColor}" />
+        <SolidColorBrush x:Key="ButtonFaceBrush"    Color="{StaticResource FieldColor}" />
+        <SolidColorBrush x:Key="ButtonHoverBrush"   Color="{StaticResource SurfaceShadedColor}" />
         <SolidColorBrush x:Key="AccentBrush"        Color="{StaticResource AccentColor}" />
+        <SolidColorBrush x:Key="AccentHiBrush"      Color="{StaticResource AccentHiColor}" />
+        <SolidColorBrush x:Key="AccentDimBrush"     Color="{StaticResource AccentDimColor}" />
+        <SolidColorBrush x:Key="AccentDeepBrush"    Color="{StaticResource AccentDeepColor}" />
         <SolidColorBrush x:Key="AccentMutedBrush"   Color="{StaticResource AccentMutedColor}" />
+        <SolidColorBrush x:Key="WoodBrush"          Color="{StaticResource WoodColor}" />
+        <SolidColorBrush x:Key="WoodDeepBrush"      Color="{StaticResource WoodDeepColor}" />
+        <SolidColorBrush x:Key="WoodActiveBrush"    Color="{StaticResource WoodActiveColor}" />
+        <SolidColorBrush x:Key="PaperBrush"         Color="{StaticResource PaperColor}" />
+        <SolidColorBrush x:Key="PaperInkBrush"      Color="{StaticResource PaperInkColor}" />
         <SolidColorBrush x:Key="GoodBrush"          Color="{StaticResource GoodColor}" />
         <SolidColorBrush x:Key="WarnBrush"          Color="{StaticResource WarnColor}" />
         <SolidColorBrush x:Key="BadBrush"           Color="{StaticResource BadColor}" />
 
+        <!--
+            The page ground with the site's warm lamp in the top left. A flat fill is what the
+            window used to be, and the difference is the whole reason the app looks like the
+            site now rather than merely sharing its palette.
+        -->
+        <RadialGradientBrush x:Key="WindowGlowBrush"
+                             Center="14%,-10%"
+                             GradientOrigin="14%,-10%"
+                             RadiusX="0.95" RadiusY="0.85">
+            <GradientStop Color="#3B2413" Offset="0" />
+            <GradientStop Color="#140E0B" Offset="0.62" />
+        </RadialGradientBrush>
+
         <!-- ======================================================== typography -->
 
-        <!-- Inter travels with the app (Avalonia.Fonts.Inter), so the same face is used where Segoe UI
-             does not exist - which is everywhere this runs except Windows. -->
-        <FontFamily x:Key="UiFont">Inter, Segoe UI, sans-serif</FontFamily>
+        <!--
+            Nunito Sans travels with the app, so the same face is used where Segoe UI does not
+            exist - which is everywhere this runs except Windows. The site's body face.
+        -->
+        <FontFamily x:Key="UiFont">avares://Switchboard/fonts/body/#Nunito Sans</FontFamily>
+
+        <!--
+            Bowlby One is the site's display face: headings, buttons, the version notes. It is
+            one weight and deliberately loud, so it is only used where the site uses it.
+        -->
+        <FontFamily x:Key="DisplayFont">avares://Switchboard/fonts/display/#Bowlby One</FontFamily>
 
         <!-- The raw log and the setting names are monospaced: the line breaks and the punctuation are
              structure, and a proportional face makes both harder to scan. -->
-        <FontFamily x:Key="MonoFont">Consolas, Menlo, DejaVu Sans Mono, monospace</FontFamily>
+        <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, monospace</FontFamily>
 
         <!-- ======================================================== buttons -->
 
@@ -74,24 +149,31 @@
             pointer-over and pressed faces from theme brushes, so setting Background alone would show a
             blue-grey flash the palette never chose.
 
+            It is the site's secondary button: the dark ground with a gold hairline, and the display
+            face. The primary is AccentButton below.
+
             The disabled face is WindowBrush rather than a dimmed ButtonFaceBrush, because the disabled
             state has to read as "not available yet", and a translucent grey button on a grey panel reads
             as a rendering fault instead.
         -->
         <ControlTheme x:Key="FlatButton" TargetType="Button">
-            <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+            <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
             <Setter Property="Background" Value="{StaticResource ButtonFaceBrush}" />
-            <Setter Property="Padding" Value="12,0" />
-            <Setter Property="Height" Value="30" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentDimBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="Height" Value="32" />
             <Setter Property="MinWidth" Value="90" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <ControlTemplate TargetType="Button">
                     <Border Name="face"
                             Background="{TemplateBinding Background}"
-                            CornerRadius="3">
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="4">
                         <ContentPresenter Content="{TemplateBinding Content}"
                                           ContentTemplate="{TemplateBinding ContentTemplate}"
                                           HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -103,12 +185,17 @@
 
             <Style Selector="^:pointerover /template/ Border#face">
                 <Setter Property="Background" Value="{StaticResource ButtonHoverBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            </Style>
+            <Style Selector="^:pointerover">
+                <Setter Property="Foreground" Value="{StaticResource AccentHiBrush}" />
             </Style>
             <Style Selector="^:pressed /template/ Border#face">
-                <Setter Property="Opacity" Value="0.75" />
+                <Setter Property="Opacity" Value="0.8" />
             </Style>
             <Style Selector="^:disabled /template/ Border#face">
                 <Setter Property="Background" Value="{StaticResource WindowBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             </Style>
             <Style Selector="^:disabled">
                 <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
@@ -116,8 +203,52 @@
             </Style>
         </ControlTheme>
 
+        <!--
+            The site's primary button: gold on the dark ground, the writing on it in paper ink, and a
+            hard shadow one step down. The shadow is not decoration - it is what makes the button read
+            as a physical thing you press, and it is the site's strongest visual signature.
+        -->
         <ControlTheme x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
             <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentDeepBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource PaperInkBrush}" />
+            <Setter Property="Template">
+                <ControlTemplate TargetType="Button">
+                    <Border Name="face"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            BoxShadow="0 3 0 0 #8A5A14">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+
+            <Style Selector="^:pointerover /template/ Border#face">
+                <Setter Property="Background" Value="{StaticResource AccentHiBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource AccentDeepBrush}" />
+            </Style>
+            <Style Selector="^:pointerover">
+                <Setter Property="Foreground" Value="{StaticResource PaperInkBrush}" />
+            </Style>
+            <Style Selector="^:pressed /template/ Border#face">
+                <Setter Property="BoxShadow" Value="0 1 0 0 #8A5A14" />
+                <Setter Property="RenderTransform" Value="translateY(2px)" />
+            </Style>
+            <Style Selector="^:disabled /template/ Border#face">
+                <Setter Property="Background" Value="{StaticResource WindowBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+                <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
+            </Style>
+            <Style Selector="^:disabled">
+                <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+                <Setter Property="Cursor" Value="Arrow" />
+            </Style>
         </ControlTheme>
 
         <!-- ======================================================== chips -->
@@ -131,15 +262,17 @@
 
             ToggleButton rather than RadioButton because the grouping is done in code against the entry
             being edited, which keeps a setting's chips independent of every other setting's.
+
+            The site's chip: a hairline on the ground, and wood when it is chosen.
         -->
         <ControlTheme x:Key="ChoiceChip" TargetType="ToggleButton">
             <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
-            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="FontSize" Value="12" />
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-            <Setter Property="Background" Value="{StaticResource WindowBrush}" />
+            <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             <Setter Property="Padding" Value="12,0" />
-            <Setter Property="Height" Value="26" />
+            <Setter Property="Height" Value="28" />
             <Setter Property="Margin" Value="0,0,6,0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
@@ -158,10 +291,13 @@
             </Setter>
 
             <Style Selector="^:pointerover /template/ Border#face">
-                <Setter Property="Background" Value="{StaticResource SurfaceShadedBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            </Style>
+            <Style Selector="^:pointerover">
+                <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
             </Style>
             <Style Selector="^:checked /template/ Border#face">
-                <Setter Property="Background" Value="{StaticResource AccentMutedBrush}" />
+                <Setter Property="Background" Value="{StaticResource WoodActiveBrush}" />
                 <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
             </Style>
             <Style Selector="^:checked">
@@ -172,19 +308,20 @@
         <!-- ======================================================== tab strip -->
 
         <!--
-            An underline rather than a raised border: it marks the selection without adding chrome, which
-            was the whole complaint about the old strip. Templated because Fluent's tab carries its own
-            background and an indicator pipe in theme colours.
+            The site's navigation: cream-dim, and a gold underline on the one that is current. An
+            underline rather than a raised border, so the strip marks the selection without adding
+            chrome. Templated because Fluent's tab carries its own background and an indicator pipe
+            in theme colours.
         -->
         <ControlTheme x:Key="TabHeader" TargetType="TabItem">
-            <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <ControlTemplate TargetType="TabItem">
                     <Grid>
-                        <Border Name="face" Background="Transparent" Padding="18,0" MinHeight="38">
+                        <Border Name="face" Background="Transparent" Padding="20,0" MinHeight="42">
                             <ContentPresenter Content="{TemplateBinding Header}"
                                               VerticalAlignment="Center" HorizontalAlignment="Center" />
                         </Border>
@@ -197,14 +334,14 @@
             <Style Selector="^:selected /template/ Border#mark">
                 <Setter Property="IsVisible" Value="True" />
             </Style>
-            <Style Selector="^:selected /template/ Border#face">
-                <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
-            </Style>
             <Style Selector="^:selected">
                 <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
             </Style>
             <Style Selector="^:pointerover /template/ Border#face">
-                <Setter Property="Background" Value="{StaticResource SurfaceShadedBrush}" />
+                <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+            </Style>
+            <Style Selector="^:pointerover">
+                <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
             </Style>
         </ControlTheme>
 
@@ -212,22 +349,28 @@
 
     <!-- ============================================================ typography -->
 
+    <!--
+        The line under the tabs. It carries a path and a status, not a title, so it is the body
+        face and not the display one: Bowlby One is a loud, wide face, and a filesystem path set
+        in it is both hard to read and louder than the thing it is describing.
+    -->
     <Style Selector="TextBlock.heading">
-        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="14.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="TextWrapping" Value="Wrap" />
-        <Setter Property="Margin" Value="0,0,0,8" />
+        <Setter Property="Margin" Value="0,0,0,10" />
     </Style>
 
     <Style Selector="TextBlock.strong">
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="12.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
     <!-- Explanatory text. Deliberately smaller and quieter than everything else. -->
     <Style Selector="TextBlock.note">
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="11.5" />
         <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
         <Setter Property="Margin" Value="0,8,0,0" />
@@ -235,9 +378,9 @@
 
     <!-- Header and cell text for the column tables. -->
     <Style Selector="TextBlock.columnHeader">
-        <Setter Property="FontSize" Value="11" />
-        <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="FontWeight" Value="ExtraBold" />
+        <Setter Property="Foreground" Value="{StaticResource FaintBrush}" />
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="Margin" Value="8,0" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -246,7 +389,7 @@
     <!-- No Foreground setter on purpose: a cell takes its colour from the row it is in, which is how a
          disabled mod or a disabled dependency is shown without a second template. -->
     <Style Selector="TextBlock.cell">
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="12.5" />
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="Margin" Value="8,0" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -264,24 +407,26 @@
 
     <!-- Type and default, the two things that tell you whether an edit will be accepted. -->
     <Style Selector="TextBlock.settingHint">
-        <Setter Property="FontSize" Value="10.5" />
-        <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource FaintBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
     <!-- The mod's own documentation for a setting. -->
     <Style Selector="TextBlock.settingDoc">
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="11.5" />
         <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
         <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
 
+    <!-- A section heading is gold, like the site's links. -->
     <Style Selector="TextBlock.sectionHeading">
-        <Setter Property="FontSize" Value="12" />
-        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="Normal" />
         <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
-        <Setter Property="Margin" Value="0,4,0,8" />
+        <Setter Property="Margin" Value="0,6,0,8" />
     </Style>
 
     <!-- ============================================================ rules and cards -->
@@ -297,34 +442,40 @@
         <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="3" />
-        <Setter Property="Padding" Value="12,10" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="14,12" />
         <Setter Property="Margin" Value="0,0,0,8" />
     </Style>
 
     <Style Selector="TabControl">
-        <Setter Property="Background" Value="{StaticResource WindowBrush}" />
+        <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="0" />
     </Style>
 
     <!-- ============================================================ input -->
 
+    <!-- The site's input: the dark ground under a gold hairline. -->
     <Style Selector="TextBox">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
         <Setter Property="Background" Value="{StaticResource FieldBrush}" />
         <Setter Property="CaretBrush" Value="{StaticResource TextBrush}" />
         <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource AccentDimBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="8,6" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="9,7" />
+    </Style>
+
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
     </Style>
 
     <Style Selector="CheckBox">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="11.5" />
         <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
         <Setter Property="Cursor" Value="Hand" />
     </Style>
@@ -338,9 +489,9 @@
     -->
     <Style Selector="ListBox">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
@@ -353,7 +504,7 @@
     </Style>
 
     <!-- Fluent draws pointer-over and selection in its own brushes on the item's content presenter.
-         Setting them here keeps the same grey-on-grey the rest of the window is made of. -->
+         Setting them here keeps the same warm browns the rest of the window is made of. -->
     <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{StaticResource SurfaceShadedBrush}" />
     </Style>

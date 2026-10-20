@@ -60,7 +60,6 @@
     <PackageReference Include="Avalonia" Version="11.3.22" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.22" />
   </ItemGroup>
 
   <ItemGroup>
@@ -75,6 +74,19 @@
          views simply never render. -->
     <AvaloniaXaml Include="src/**/*.xaml" />
     <None Remove="src/**/*.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The two faces the site uses, bundled so the app looks the same on a machine with
+         neither installed. Nunito Sans carries the body text; Bowlby One is the display
+         face the site uses for headings and buttons. Both are SIL Open Font Licence, and
+         the licence text sits beside the files. -->
+    <AvaloniaResource Include="src/fonts/**/*.ttf">
+      <!-- The avares path is the resource's link, not its path on disk, so the faces sit at
+           avares://Switchboard/fonts/body and .../display however the sources are laid out. -->
+      <Link>fonts\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </AvaloniaResource>
+    <None Remove="src/fonts/**/*.ttf" />
   </ItemGroup>
 
   <ItemGroup>

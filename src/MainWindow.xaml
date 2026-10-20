@@ -5,7 +5,7 @@
         Title="Scam With Your Friends"
         Width="1060" Height="720" MinWidth="940" MinHeight="620"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource WindowBrush}"
+        Background="{StaticResource WindowGlowBrush}"
         FontFamily="{StaticResource UiFont}"
         FontSize="12"
         Foreground="{StaticResource TextBrush}">
@@ -31,13 +31,15 @@
         </Grid.RowDefinitions>
 
         <!-- A newer switchboard release on GitHub. Hidden until a check finds one: most launches
-             are already current, and a permanent strip would train everyone to ignore it. -->
+             are already current, and a permanent strip would train everyone to ignore it.
+
+             The site's status strip: a panel on the ground with a gold rule under it. -->
         <Border x:Name="UpdateBar" Grid.Row="0"
                 IsVisible="False"
-                Background="{StaticResource AccentMutedBrush}"
+                Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource AccentBrush}"
-                BorderThickness="0,0,0,1"
-                Padding="16,8">
+                BorderThickness="0,0,0,2"
+                Padding="16,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -87,7 +89,7 @@
                 Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrush}"
                 BorderThickness="0,1,0,0"
-                Padding="16,7">
+                Padding="16,9">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />

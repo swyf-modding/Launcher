@@ -1,5 +1,6 @@
 using System;
 using Avalonia;
+using Avalonia.Media;
 
 namespace Switchboard
 {
@@ -31,9 +32,13 @@ namespace Switchboard
         {
             return AppBuilder.Configure<App>()
                 .UsePlatformDetect()
-                // Inter is bundled with the app, so the same face is used on a machine that has no
-                // Segoe UI, and the tool does not fall back to a serif default on Linux.
-                .WithInterFont()
+                // The site's body face, bundled, so the app looks the same on a machine that has
+                // neither it nor anything else installed, and does not fall back to a serif
+                // default on Linux. The display face is set in Theme.xaml.
+                .With(new FontManagerOptions
+                {
+                    DefaultFamilyName = "avares://Switchboard/fonts/body/#Nunito Sans",
+                })
                 .LogToTrace();
         }
     }

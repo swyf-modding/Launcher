@@ -417,9 +417,16 @@ with no Avalonia in it.
 
 ### How it looks
 
-Dark, low-chroma, and the same palette the in-game menu uses — mod-lib's `UiTheme`, which reads the game's
-live colours and falls back to these. So the switchboard and the menu it opens are one system rather than
-two, and there is one file to change rather than a set of greys scattered through four tabs.
+The website's palette, token for token: the warm brown ground, cream text, gold for the things that are
+actionable, wood and paper for the two surfaces meant to be noticed. The site is where a player meets
+the tool, so the app is not allowed to look like a different program. The two faces are the site's too —
+Nunito Sans for the body, Bowlby One for the display — and both are bundled, so the app looks the same on
+a machine that has neither installed.
+
+The same colours are also mod-lib's `UiTheme` fallback, which the shared library reads from the game's
+live colours and falls back to when it cannot. So the switchboard, the in-game menu it opens and the site
+are one visual system rather than three, and there is one file to change rather than a set of greys
+scattered through four tabs.
 
 Everything visual is a `Style`, a `ControlTheme` or a resource in `Theme.xaml`, over Avalonia's
 `FluentTheme` with `RequestedThemeVariant="Dark"`. Recolouring the stock controls is mostly a matter of
