@@ -34,6 +34,16 @@ namespace Switchboard.Views
     {
         public MainWindow Host { get; set; }
 
+        /// <summary>What this tab is for, in one line. Shown under the tab strip.</summary>
+        public string Purpose
+        {
+            get
+            {
+                return "What the game and the loader said the last time it ran. The problems worth " +
+                       "knowing about are listed above the raw log.";
+            }
+        }
+
         private readonly ObservableCollection<ProblemRow> _problems = new ObservableCollection<ProblemRow>();
         private DispatcherTimer _timer;
         private DateTime _lastWritten = DateTime.MinValue;
@@ -41,6 +51,7 @@ namespace Switchboard.Views
         public LogView()
         {
             InitializeComponent();
+            PurposeText.Text = Purpose;
             Problems.ItemsSource = _problems;
 
             // Subscribed after InitializeComponent, so the IsChecked="True" in the markup does not
@@ -57,6 +68,9 @@ namespace Switchboard.Views
                 Headline.Text = "No log yet - it appears after the game has been launched once.";
                 Raw.Text = "";
                 _problems.Clear();
+                ShowEmpty("No log yet",
+                    "BepInEx writes one on every launch, in the game folder. Launch the game once " +
+                    "and this fills in.");
                 return;
             }
 
@@ -68,6 +82,7 @@ namespace Switchboard.Views
             catch (Exception ex)
             {
                 Headline.Text = "Could not read the log: " + ex.Message;
+                ShowEmpty("Could not read the log", ex.Message);
                 return;
             }
 
@@ -80,6 +95,14 @@ namespace Switchboard.Views
                 written.ToString("yyyy-MM-dd HH:mm:ss") + ")";
 
             FindProblems(lines);
+        }
+
+        /// <summary>Show the empty state in place of the table, with the given words.</summary>
+        private void ShowEmpty(string title, string hint)
+        {
+            EmptyTitle.Text = title;
+            EmptyHint.Text = hint;
+            Empty.IsVisible = true;
         }
 
         /// <summary>
@@ -101,6 +124,20 @@ namespace Switchboard.Views
 
                 _problems.Add(new ProblemRow(
                     (i + 1).ToString(), Kind(line), Detail(line), IsFatal(line)));
+            }
+
+            // "Nothing found" is an answer, and it is the answer a person looking for a fault
+            // most wants: an empty table would read as a tab that is broken rather than as a log
+            // with no errors in it.
+            if (_problems.Count == 0)
+            {
+                ShowEmpty("No problems found",
+                    "Nothing in the log looks like a failure. The raw log is below if you want to " +
+                    "read it all.");
+            }
+            else
+            {
+                Empty.IsVisible = false;
             }
         }
 

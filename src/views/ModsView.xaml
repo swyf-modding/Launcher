@@ -14,14 +14,18 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock x:Name="Summary" Grid.Row="0" Classes="strong" />
+        <!-- What this tab is for, in one line, under the tab strip. -->
+        <TextBlock x:Name="PurposeText" Grid.Row="0" Classes="purpose" Margin="0,0,0,10" />
 
-        <Grid Grid.Row="1" Margin="0,0,0,12">
+        <TextBlock x:Name="Summary" Grid.Row="1" Classes="status" />
+
+        <Grid Grid.Row="2" Margin="0,0,0,12">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -57,36 +61,67 @@
                 </ListBox.Styles>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Grid Height="26">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="230" />
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="90" />
-                                <ColumnDefinition Width="230" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="cell" />
-                            <TextBlock Grid.Column="1" Text="{Binding Version}" Classes="cell" />
-                            <TextBlock Grid.Column="2" Text="{Binding State}" Classes="cell" />
-                            <TextBlock Grid.Column="3" Text="{Binding Guid}" Classes="cell" />
-                            <TextBlock Grid.Column="4" Text="{Binding Note}" Classes="cell" />
-                        </Grid>
+                        <Border Classes="tableRow">
+                            <Grid Height="26">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="230" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="90" />
+                                    <ColumnDefinition Width="230" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="cell" />
+                                <TextBlock Grid.Column="1" Text="{Binding Version}" Classes="cell" />
+                                <TextBlock Grid.Column="2" Text="{Binding State}" Classes="cell" />
+                                <TextBlock Grid.Column="3" Text="{Binding Guid}" Classes="cell" />
+                                <TextBlock Grid.Column="4" Text="{Binding Note}" Classes="cell" />
+                            </Grid>
+                        </Border>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+
+            <!--
+                An empty table with a header row and nothing under it tells the person nothing:
+                they cannot tell a tab that is broken from a folder that happens to be empty. So
+                the empty state says what is absent and what to do about it.
+            -->
+            <Border x:Name="Empty" Grid.Row="1" Classes="empty" IsVisible="False">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="EmptyTitle" Classes="emptyTitle" />
+                    <TextBlock x:Name="EmptyHint" Classes="emptyHint" />
+                </StackPanel>
+            </Border>
         </Grid>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
-            <Button x:Name="EnableButton" Content="Enable" Theme="{StaticResource FlatButton}" Click="OnToggle" />
-            <Button x:Name="DisableButton" Content="Disable" Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnToggle" />
-            <Button x:Name="DeleteButton" Content="Delete..." Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnDelete" />
-            <Button x:Name="ConfigButton" Content="Config..." Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnConfig" />
-            <Button Content="Rescan" Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnRescan" />
-            <Button Content="Open plugins folder" Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnOpenPlugins" />
-            <Button Content="Open disabled folder" Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnOpenDisabled" />
-        </StackPanel>
+        <!--
+            Two groups, and the split is not cosmetic. The four on the left act on the row that is
+            selected, so they are only live when a row is selected; the three on the right act on
+            the whole install and are always live. Putting them in one row made it look as though
+            "Rescan" was another thing you could do to a mod.
+        -->
+        <Grid Grid.Row="3" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Row="3" Classes="note"
+            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <Button x:Name="EnableButton" Content="Enable" Theme="{StaticResource FlatButton}" Click="OnToggle" />
+                <Button x:Name="DisableButton" Content="Disable" Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnToggle" />
+                <Button x:Name="DeleteButton" Content="Delete..." Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnDelete" />
+                <Button x:Name="ConfigButton" Content="Config..." Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnConfig" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <Button Content="Rescan" Theme="{StaticResource FlatButton}" Click="OnRescan" />
+                <Button Content="Open plugins folder" Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnOpenPlugins" />
+                <Button Content="Open disabled folder" Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnOpenDisabled" />
+            </StackPanel>
+        </Grid>
+
+        <TextBlock Grid.Row="4" Classes="note"
                    Text="Enable and disable move the file between plugins and plugins_disabled, which is what BepInEx watches. Changes take effect on the next launch." />
     </Grid>
 </UserControl>

@@ -34,11 +34,22 @@ namespace Switchboard.Views
         /// <summary>Set by the window once both are constructed; see MainWindow's remarks.</summary>
         public MainWindow Host { get; set; }
 
+        /// <summary>What this tab is for, in one line. Shown under the tab strip.</summary>
+        public string Purpose
+        {
+            get
+            {
+                return "Checks what your install is missing and repairs it. Nothing here changes " +
+                       "the game folder until you press Set up / repair.";
+            }
+        }
+
         private readonly ObservableCollection<CheckRow> _rows = new ObservableCollection<CheckRow>();
 
         public SetupView()
         {
             InitializeComponent();
+            PurposeText.Text = Purpose;
             Checks.ItemsSource = _rows;
         }
 

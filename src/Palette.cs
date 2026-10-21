@@ -22,6 +22,7 @@ namespace Switchboard
     {
         public const string Text = "TextBrush";
         public const string Muted = "MutedBrush";
+        public const string Faint = "FaintBrush";
         public const string Accent = "AccentBrush";
         public const string AccentMuted = "AccentMutedBrush";
         public const string Good = "GoodBrush";

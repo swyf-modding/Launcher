@@ -71,11 +71,22 @@ namespace Switchboard.Views
     {
         public MainWindow Host { get; set; }
 
+        /// <summary>What this tab is for, in one line. Shown under the tab strip.</summary>
+        public string Purpose
+        {
+            get
+            {
+                return "The mods in your BepInEx folder, and the three things anyone wants to do " +
+                       "to one: enable it, disable it, or delete it.";
+            }
+        }
+
         private readonly ObservableCollection<ModRow> _rows = new ObservableCollection<ModRow>();
 
         public ModsView()
         {
             InitializeComponent();
+            PurposeText.Text = Purpose;
             List.ItemsSource = _rows;
         }
 
@@ -85,7 +96,15 @@ namespace Switchboard.Views
 
             if (!Host.Install.HasBepInEx)
             {
-                Summary.Text = "No BepInEx install found, so there is nothing to list.";
+                Summary.Text = "BepInEx is not installed, so there is nothing to list.";
+
+                // Not "no mods": the loader itself is missing, which is a different problem with a
+                // different fix, and saying so is the difference between a person knowing what to
+                // do next and a person going to look for the mods.
+                EmptyTitle.Text = "No loader installed";
+                EmptyHint.Text = "BepInEx has to be installed before there are any mods to list. " +
+                                 "The Setup tab installs it.";
+                Empty.IsVisible = true;
                 UpdateButtons();
                 return;
             }
@@ -100,6 +119,18 @@ namespace Switchboard.Views
             }
 
             Summary.Text = entries.Count + " mod file(s), " + enabled + " enabled";
+
+            if (entries.Count == 0)
+            {
+                EmptyTitle.Text = "No mods installed";
+                EmptyHint.Text = "Install one from the Get mods tab, or drop a plugin dll into the " +
+                                 "plugins folder yourself.";
+                Empty.IsVisible = true;
+            }
+            else
+            {
+                Empty.IsVisible = false;
+            }
 
             if (_rows.Count > 0) List.SelectedIndex = 0;
             UpdateButtons();

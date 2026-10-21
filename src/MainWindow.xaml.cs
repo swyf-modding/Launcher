@@ -101,12 +101,24 @@ namespace Switchboard
             {
                 Status("No game install found. Set SWYG_GAME_DIR, or pass a path as the first argument.", false);
             }
-
+            else if (!Install.HasBepInEx)
+            {
+                // The most common first run, and the one where the status bar is the only place that
+                // can say it: the window opens on the Setup tab, and the status line is what is left
+                // when the eye has finished reading the table.
+                State("Ready. BepInEx is not installed yet - the Setup tab will do that.");
+            }
+            else
+            {
+                State("Ready.");
+            }
             SetupPage.Reload();
             ModsPage.Reload();
 
             CheckForSwitchboardUpdate(true);
         }
+
+
 
         /// <summary>
         /// Re-probe whichever tab was just arrived at.
@@ -137,6 +149,7 @@ namespace Switchboard
             var index = Tabs.SelectedIndex;
             if (index == _lastShownTab) return;
             _lastShownTab = index;
+
 
             // Deferred to the dispatcher, so the tab has been measured before it reloads. A tab that was
             // not selected at startup is only given its real width when it is first shown, and one that
@@ -262,6 +275,26 @@ namespace Switchboard
             StatusText.Foreground = Palette.Brush(good ? Palette.Good : Palette.Bad);
         }
 
+        /// <summary>
+        /// Say what state the tool is in, without claiming it is a result.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="Status"/> is for the outcome of something that just happened, so it is coloured
+        /// green or red. A plain state - what is installed, what is not - is neither, and painting it
+        /// green would make everything look like a success.
+        /// </remarks>
+        public void State(string message)
+        {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.Post(delegate { State(message); });
+                return;
+            }
+
+            StatusText.Text = message ?? "";
+            StatusText.Foreground = Palette.Brush(Palette.Faint);
+        }
+
         /// <summary>Let the UI catch up while a long operation is going.</summary>
         public void Pump()
         {
@@ -307,9 +340,12 @@ namespace Switchboard
                         if (newer)
                         {
                             _latestRelease = latest;
-                            UpdateText.Text = "Switchboard " + latest.TagName + " is available on GitHub " +
-                                              "(you have " + current + "). Download the zip and unpack it " +
-                                              "over this one - your game install is untouched.";
+
+                            // Two lines rather than one long one: what is happening, and what to do
+                            // about it. The instruction is the part people have to act on, and it
+                            // reads as an instruction when it is not buried in a sentence.
+                            UpdateText.Text = "Switchboard " + latest.TagName + " is available - you have " + current + ".";
+                            UpdateHint.Text = "Download it and unpack it over this one. Your game install is untouched.";
                             UpdateBar.IsVisible = true;
                             Status("Switchboard " + latest.TagName + " is available - see the bar above.", true);
                         }
@@ -371,6 +407,14 @@ namespace Switchboard
         private void OnDismissUpdate(object sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             UpdateBar.IsVisible = false;
+
+            // The status line was pointing at the bar that is now gone, so it cannot be left saying
+            // "see the bar above" - that is how a person ends up looking for a bar that is not there.
+            // The update has not gone anywhere, though, so the line says that instead.
+            var release = _latestRelease;
+            State(release != null && !string.IsNullOrWhiteSpace(release.TagName)
+                ? "Dismissed. Switchboard " + release.TagName + " is still available - press Check for updates to see it."
+                : "Dismissed.");
         }
 
         /// <summary>Run work on the UI thread.</summary>

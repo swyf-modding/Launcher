@@ -47,17 +47,24 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="UpdateText"
-                           Grid.Column="0"
-                           VerticalAlignment="Center"
-                           TextWrapping="Wrap"
-                           Foreground="{StaticResource TextBrush}" />
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock x:Name="UpdateText"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource TextBrush}" />
+                    <TextBlock x:Name="UpdateHint"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap"
+                               FontSize="11.5"
+                               Foreground="{StaticResource MutedBrush}" />
+                </StackPanel>
 
                 <Button x:Name="ViewReleaseButton"
                         Grid.Column="1"
                         Content="View release"
                         Margin="12,0,0,0"
                         MinWidth="100"
+                        VerticalAlignment="Center"
                         Theme="{StaticResource AccentButton}"
                         Click="OnViewRelease" />
 
@@ -65,11 +72,16 @@
                         Content="Dismiss"
                         Margin="8,0,0,0"
                         MinWidth="80"
+                        VerticalAlignment="Center"
                         Theme="{StaticResource FlatButton}"
                         Click="OnDismissUpdate" />
             </Grid>
         </Border>
 
+        <!--
+            The tab strip. The line under it that says what the tab is for belongs to each view,
+            so it sits with the content it describes rather than above the navigation.
+        -->
         <TabControl x:Name="Tabs" Grid.Row="1" SelectionChanged="OnTabChanged" Padding="0">
             <TabItem Header="Setup" Theme="{StaticResource TabHeader}">
                 <views:SetupView x:Name="SetupPage" />
@@ -104,17 +116,29 @@
                            Foreground="{StaticResource MutedBrush}"
                            Text="Ready." />
 
+                <!--
+                    A quiet action next to the loud one. Checking for an update is something a
+                    person does when they want to know, not something they do to use the tool, so
+                    it is a link-coloured button rather than a second button that competes with
+                    the one that starts the game.
+                -->
                 <Button x:Name="CheckUpdatesButton"
                         Grid.Column="1"
                         Content="Check for updates"
-                        Margin="0,0,8,0"
-                        MinWidth="130"
-                        Theme="{StaticResource FlatButton}"
+                        Margin="0,0,10,0"
+                        VerticalAlignment="Center"
+                        Theme="{StaticResource GhostButton}"
                         Click="OnCheckUpdates" />
 
+                <!--
+                    Playing the game is the point of the whole tool, so it is the one gold button
+                    in the window and it is named for what it does rather than for what it is.
+                -->
                 <Button Grid.Column="2"
-                        Content="Play"
-                        MinWidth="100"
+                        Content="Play game"
+                        MinWidth="130"
+                        Height="34"
+                        VerticalAlignment="Center"
                         Theme="{StaticResource AccentButton}"
                         Click="OnPlay" />
             </Grid>

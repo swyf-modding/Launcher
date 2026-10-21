@@ -17,16 +17,21 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="160" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock x:Name="Headline" Grid.Row="0" Classes="heading" />
+        <!-- What this tab is for, in one line, under the tab strip. -->
+        <TextBlock x:Name="PurposeText" Grid.Row="0" Classes="purpose" Margin="0,0,0,10" />
+
+        <TextBlock x:Name="Headline" Grid.Row="1" Classes="heading" />
 
         <!-- The last column is a star column, so there is nothing to scroll to horizontally. -->
-        <Grid Grid.Row="1" Margin="0,0,0,12">
+        <Grid Grid.Row="2" Margin="0,0,0,12">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -53,37 +58,68 @@
                 </ListBox.Styles>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Grid Height="26">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="70" />
-                                <ColumnDefinition Width="200" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding Line}" Classes="cell" />
-                            <TextBlock Grid.Column="1" Text="{Binding Kind}" Classes="cell" />
-                            <TextBlock Grid.Column="2" Text="{Binding Detail}" Classes="cell" />
-                        </Grid>
+                        <Border Classes="tableRow">
+                            <Grid Height="26">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="200" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Line}" Classes="cell" />
+                                <TextBlock Grid.Column="1" Text="{Binding Kind}" Classes="cell" />
+                                <TextBlock Grid.Column="2" Text="{Binding Detail}" Classes="cell" />
+                            </Grid>
+                        </Border>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+
+            <!--
+                No problems is the good case, and saying so is better than an empty table: a person
+                looking for what went wrong needs to know that there is nothing, not that the
+                feature is broken.
+            -->
+            <Border x:Name="Empty" Grid.Row="1" Classes="empty" IsVisible="False">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="EmptyTitle" Classes="emptyTitle" />
+                    <TextBlock x:Name="EmptyHint" Classes="emptyHint" />
+                </StackPanel>
+            </Border>
         </Grid>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
-            <Button Content="Reload" Theme="{StaticResource FlatButton}" Click="OnReload" />
-            <Button Content="Open log's folder" Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnOpenLog" />
-            <Button Content="Open game folder" Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnOpenGame" />
-            <CheckBox x:Name="Follow" Margin="24,0,0,0" VerticalAlignment="Center"
-                      IsChecked="True" Content="Follow while the game runs" />
-        </StackPanel>
+        <!--
+            Reload is the thing you press when the game has just run; the two folder buttons are
+            for when the log is somewhere else than you think it is.
+        -->
+        <Grid Grid.Row="3" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-        <TextBox x:Name="Raw" Grid.Row="3"
+            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <Button Content="Reload" Theme="{StaticResource FlatButton}" Click="OnReload" />
+                <Button Content="Open log's folder" Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnOpenLog" />
+                <Button Content="Open game folder" Margin="8,0,0,0" Theme="{StaticResource FlatButton}" Click="OnOpenGame" />
+            </StackPanel>
+
+            <CheckBox x:Name="Follow" Grid.Column="2" Margin="24,0,0,0" VerticalAlignment="Center"
+                      IsChecked="True" Content="Follow while the game runs" />
+        </Grid>
+
+        <!-- A heading over the raw log, so the box is named rather than being a large empty rectangle. -->
+        <TextBlock Grid.Row="4" Text="Raw log" Classes="columnHeader" Margin="0,0,0,6" />
+
+        <TextBox x:Name="Raw" Grid.Row="5"
                  IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
                  FontFamily="{StaticResource MonoFont}" FontSize="11.5"
+                 Watermark="The log as BepInEx wrote it appears here."
                  VerticalContentAlignment="Top"
                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
                  ScrollViewer.VerticalScrollBarVisibility="Auto" />
 
-        <TextBlock Grid.Row="4" Classes="note"
+        <TextBlock Grid.Row="6" Classes="note"
                    Text="BepInEx writes this on every launch. A preloader crash, before BepInEx starts, goes to preloader_*.log in the game folder instead." />
     </Grid>
 </UserControl>

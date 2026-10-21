@@ -207,10 +207,10 @@ Two consequences worth stating plainly:
 | Setup payload | the only row about *this download* rather than the game — the embedded corlib and Doorstop, and whether they could be read |
 | Proton winhttp override | **Linux only.** Without it, Wine's own `winhttp.dll` wins and Doorstop never loads |
 
-**Set up / repair** runs the setup in-process and streams its log into the window as it goes. **Offline**
-is there for when BepInEx has already been downloaded, or there is no network. The buttons only need a
-game install to exist; the setup logic and its payload are part of the exe, so there is nothing beside it
-that a partial download could have left out.
+**Set up / repair** runs the setup in-process and streams its log into the window as it goes. **Set up
+(offline)** is there for when BepInEx has already been downloaded, or there is no network. The buttons
+only need a game install to exist; the setup logic and its payload are part of the exe, so there is
+nothing beside it that a partial download could have left out.
 
 **Mods** lists every dll in both folders with **Enable**, **Disable** and **Delete**. BepInEx has no
 enable/disable of its own, so a toggle is a file move between the two folders — the same thing a person
@@ -239,10 +239,10 @@ made during a session would be overwritten a moment later.
 preloader crash, before BepInEx starts, goes to `preloader_*.log` in the game folder instead, and the tab
 says so.
 
-**Play** starts the game, and refuses while it is already running. Passing a path as the first argument
-overrides where the game is looked for. On Windows it starts the game's own exe; on Linux it goes through
-Steam, because that is how the game is played there and it keeps the user's chosen Proton and their
-overlays. See below.
+**Play game** starts the game, and refuses while it is already running. Passing a path as the first
+argument overrides where the game is looked for. On Windows it starts the game's own exe; on Linux it goes
+through Steam, because that is how the game is played there and it keeps the user's chosen Proton and
+their overlays. See below.
 
 #### Playing on Linux
 
@@ -261,10 +261,10 @@ WINEDLLOVERRIDES="winhttp=n,b" %command% -whisper-cpu
 Keep it exactly like that: `n` alone (the builtin disabled) makes the game crash in Unity's window
 code a minute or so into startup, which looks like the game refusing to start.
 
-The Setup tab shows a **Proton winhttp override** row on Linux, and **Play** sets the override in the
-Proton prefix itself when it can — best effort, because that is only safe when a prefix already exists
-and Wine is not running. If it cannot, it says so and prints the launch option to paste. Steam discovery
-(`SteamEnvironment`) finds the game in every Steam library, including the Flatpak and the usual
+The Setup tab shows a **Proton winhttp override** row on Linux, and **Play game** sets the override in
+the Proton prefix itself when it can — best effort, because that is only safe when a prefix already
+exists and Wine is not running. If it cannot, it says so and prints the launch option to paste. Steam
+discovery (`SteamEnvironment`) finds the game in every Steam library, including the Flatpak and the usual
 `~/.steam` and `~/.local/share/Steam` locations, so the switchboard works without being told where the game
 is.
 
@@ -374,8 +374,8 @@ Switchboard.csproj      The project: net10.0 + Avalonia, referencing ScamWYF.Set
 src/
 |-- Program.cs         The Avalonia entry point (BuildAvaloniaApp / StartWithClassicDesktopLifetime)
 |-- App.xaml(.cs)      Application resources, the theme include, and the unhandled-exception reporter
-|-- MainWindow.xaml    The four tabs, the status line, the Play button
-|-- MainWindow.xaml.cs  Also the host the views talk to: status, busy flag, the in-process setup, Play
+|-- MainWindow.xaml    The four tabs, the status line, the Play game button
+|-- MainWindow.xaml.cs  Also the host the views talk to: status, busy flag, the in-process setup, Play game
 |-- Theme.xaml         The palette, the control themes and the styles - see "How it looks"
 |-- Palette.cs         Reading the palette and control themes back out of the application resources
 |-- Dialogs.cs         Modal confirmations, themed; Avalonia has no MessageBox to theme
@@ -430,11 +430,25 @@ scattered through four tabs.
 
 Everything visual is a `Style`, a `ControlTheme` or a resource in `Theme.xaml`, over Avalonia's
 `FluentTheme` with `RequestedThemeVariant="Dark"`. Recolouring the stock controls is mostly a matter of
-setting the palette resources Fluent reads; the four controls the app draws itself — the flat button, the
-accent button, the choice chip and the tab header — are `ControlTheme`s in the same file. That is the
-whole reason the UI is on a framework with templatable controls: the WinForms build needed subclasses
-purely to draw chrome the framework had already coloured from system brushes, and scrollbars could not be
-themed at all.
+setting the palette resources Fluent reads; the five controls the app draws itself — the flat button, the
+accent button, the ghost button, the choice chip and the tab header — are `ControlTheme`s in the same
+file. That is the whole reason the UI is on a framework with templatable controls: the WinForms build
+needed subclasses purely to draw chrome the framework had already coloured from system brushes, and
+scrollbars could not be themed at all.
+
+Four conventions the four tabs share, and the reason for each:
+
+- **A line under the tab strip saying what the tab is for.** It belongs to the tab, so it is a
+  sentence rather than a heading, and it is the first thing anyone reads. Each view has a `Purpose`
+  property and its own `PurposeText` block.
+- **An empty state wherever a table can be empty.** A table with a header row and nothing under it
+  cannot be told apart from a tab that is broken, so the empty state says what is absent and what to
+  do about it — "no loader installed, the Setup tab installs it" rather than an empty box.
+- **Buttons that act on the selection are separated from buttons that act on everything.** On the
+  Mods tab that is the difference between *Enable* and *Rescan*, which used to sit in one row and
+  look like the same kind of thing.
+- **A disabled button is visibly disabled.** It keeps its shape and goes quiet, the way the site's
+  buttons dim to 55%, rather than disappearing into the background.
 
 One consequence worth knowing before editing a view: the column tables are a header `Grid` plus an
 `ItemTemplate` whose row grid repeats the same column widths, with a trailing `*` column so the last cell
@@ -454,8 +468,8 @@ at 940x640, and the answer to that is not a narrower column.
 on disk and never touches the network. This one downloads code that the game will execute, so it says
 what it is doing and asks before it does anything.
 
-**From the list.** *Check for updates* asks GitHub for the latest release of each project and shows the
-tag, the size, and whether it is already installed. *Install* downloads the release's zip, unpacks it,
+**From the list.** *Refresh from GitHub* asks GitHub for the latest release of each project and shows
+the tag, the size, and whether it is already installed. *Install* downloads the release's zip, unpacks it,
 reads each file's metadata, and shows you exactly what will be written:
 
 ```text

@@ -86,7 +86,13 @@ namespace Switchboard.Views
         public GetModsView()
         {
             InitializeComponent();
+            PurposeText.Text = Purpose;
             List.ItemsSource = _rows;
+
+            // The tab is not looked at until it is opened, and the catalogue is not fetched until
+            // then either. Without this the tab would be a blank table for as long as nobody opened
+            // it, which reads as broken rather than as "not looked at yet".
+            Reload();
         }
 
         /// <summary>
@@ -113,7 +119,33 @@ namespace Switchboard.Views
         {
             Summary.Text = "Not checked yet.";
             _rows.Clear();
+            ShowEmpty("Not checked yet", "The catalogue is read from GitHub when this tab is opened.");
             UpdateButtons();
+        }
+
+        /// <summary>
+        /// What this tab is for, in one line. Shown under the tab strip.
+        /// </summary>
+        /// <remarks>
+        /// The warning at the end is not decoration. Installing a mod puts code in the game folder
+        /// that the game will load and run, and that is worth saying at the top of the tab rather
+        /// than only in the small print at the bottom of it.
+        /// </remarks>
+        public string Purpose
+        {
+            get
+            {
+                return "Install a mod from the catalogue, or from a release URL. Installing puts code " +
+                       "in your game folder that the game will load and run.";
+            }
+        }
+
+        /// <summary>Show the empty state in place of the table, with the given words.</summary>
+        private void ShowEmpty(string title, string hint)
+        {
+            EmptyTitle.Text = title;
+            EmptyHint.Text = hint;
+            Empty.IsVisible = true;
         }
 
         public void OnTabShown()
@@ -123,10 +155,16 @@ namespace Switchboard.Views
 
         private void UpdateButtons()
         {
-            CheckButton.IsEnabled = !_busy;
-            InstallButton.IsEnabled = !_busy && List.SelectedItem is ReleaseRow;
-            FromUrlButton.IsEnabled = !_busy;
-            UrlBox.IsEnabled = !_busy;
+            // Nothing on this tab can do anything without a loader to put a mod into, so the whole
+            // install area is off rather than waiting to fail. It used to be left enabled in that
+            // state, because the path that found no loader returned before this ran - so the
+            // Install button offered to install a mod that had nowhere to go.
+            var canInstall = Host != null && Host.Install.HasBepInEx;
+
+            CheckButton.IsEnabled = !_busy && canInstall;
+            InstallButton.IsEnabled = !_busy && canInstall && List.SelectedItem is ReleaseRow;
+            FromUrlButton.IsEnabled = !_busy && canInstall;
+            UrlBox.IsEnabled = !_busy && canInstall;
         }
 
         private ReleaseRow Selected
@@ -147,7 +185,11 @@ namespace Switchboard.Views
         {
             if (!Host.Install.HasBepInEx)
             {
-                Summary.Text = "No BepInEx install found, so there is nowhere to put a mod. Run the Setup tab first.";
+                Summary.Text = "There is nowhere to put a mod yet.";
+                ShowEmpty("No loader installed",
+                    "BepInEx has to be installed before a mod has somewhere to go. The Setup tab " +
+                    "installs it, and then this tab works.");
+                UpdateButtons();
                 return;
             }
 
@@ -203,6 +245,20 @@ namespace Switchboard.Views
                     SetBusy(false, report);
 
                     if (_rows.Count > 0) List.SelectedIndex = 0;
+
+                    // An empty catalogue is a real possibility and a different thing from a failure
+                    // to read it, so the empty state says which one this is.
+                    if (_rows.Count == 0)
+                    {
+                        ShowEmpty("No mods in the catalogue",
+                            problems.Count > 0
+                                ? "The catalogue could not be read: " + string.Join("  ", problems.ToArray())
+                                : "The catalogue is empty at the moment. Check again later.");
+                    }
+                    else
+                    {
+                        Empty.IsVisible = false;
+                    }
 
                     UpdateButtons();
                 });

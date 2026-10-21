@@ -193,9 +193,13 @@
             <Style Selector="^:pressed /template/ Border#face">
                 <Setter Property="Opacity" Value="0.8" />
             </Style>
+            <!--
+                Disabled keeps its shape and goes quiet, rather than disappearing: the site's
+                buttons dim to 55% when they are unavailable, and a control that vanishes is
+                harder to place in a row than one that is obviously off.
+            -->
             <Style Selector="^:disabled /template/ Border#face">
-                <Setter Property="Background" Value="{StaticResource WindowBrush}" />
-                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+                <Setter Property="Opacity" Value="0.45" />
             </Style>
             <Style Selector="^:disabled">
                 <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
@@ -241,7 +245,7 @@
                 <Setter Property="RenderTransform" Value="translateY(2px)" />
             </Style>
             <Style Selector="^:disabled /template/ Border#face">
-                <Setter Property="Background" Value="{StaticResource WindowBrush}" />
+                <Setter Property="Background" Value="{StaticResource SurfaceShadedBrush}" />
                 <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
                 <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
             </Style>
@@ -249,6 +253,20 @@
                 <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
                 <Setter Property="Cursor" Value="Arrow" />
             </Style>
+        </ControlTheme>
+
+        <!--
+            A quiet action: the site's link-coloured refresh, in a button. Gold on the ground,
+            no fill and no border, so it cannot be mistaken for something that does the work.
+        -->
+        <ControlTheme x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinWidth" Value="0" />
         </ControlTheme>
 
         <!-- ======================================================== chips -->
@@ -350,7 +368,7 @@
     <!-- ============================================================ typography -->
 
     <!--
-        The line under the tabs. It carries a path and a status, not a title, so it is the body
+        The line under the tab strip. It carries a path and a status, not a title, so it is the body
         face and not the display one: Bowlby One is a loud, wide face, and a filesystem path set
         in it is both hard to read and louder than the thing it is describing.
     -->
@@ -362,10 +380,25 @@
         <Setter Property="Margin" Value="0,0,0,10" />
     </Style>
 
-    <Style Selector="TextBlock.strong">
+    <!--
+        What this tab is for, in one line. It changes with the tab and is the first thing read,
+        so it is a sentence rather than a label.
+    -->
+    <Style Selector="TextBlock.purpose">
         <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!--
+        The state of the thing the tab is about. A status line, so it is a little louder than the
+        purpose line above it, and the colour carries whether it is good.
+    -->
+    <Style Selector="TextBlock.status">
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,0,0,12" />
     </Style>
 
     <!-- Explanatory text. Deliberately smaller and quieter than everything else. -->
@@ -435,6 +468,45 @@
     <Style Selector="Border.rule">
         <Setter Property="Background" Value="{StaticResource BorderBrush}" />
         <Setter Property="Height" Value="1" />
+    </Style>
+
+    <!--
+        The rule under a table row. A five-column table is hard to follow without one: the eye
+        loses the row somewhere in the middle and arrives at the last column reading about a
+        different mod. The site's tables have the same hairline under every row.
+    -->
+    <Style Selector="Border.tableRow">
+        <Setter Property="BorderBrush" Value="{StaticResource LineSoftBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+    </Style>
+
+    <!--
+        What a table shows when it has nothing to show. An empty table with a header row and
+        nothing under it is the least informative thing a program can draw: the person cannot
+        tell a broken feature from a genuinely empty folder. So the empty state says what is
+        absent and what to do about it.
+    -->
+    <Style Selector="Border.empty">
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="24" />
+    </Style>
+
+    <Style Selector="TextBlock.emptyTitle">
+        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style Selector="TextBlock.emptyHint">
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,6,0,0" />
     </Style>
 
     <!-- One setting: its documentation above it, its name and value below. -->
