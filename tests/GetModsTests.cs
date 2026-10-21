@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using ScamWYF.Setup;
 
 namespace Switchboard.Tests
@@ -707,6 +708,138 @@ namespace Switchboard.Tests
                 () => UpdateChecker.ParseReleaseJson("{\"html_url\": \"https://github.com/x\"}"));
             Throws("a reply that is not JSON is an error",
                 () => UpdateChecker.ParseReleaseJson("rate limit exceeded"));
+
+            Section("Self-update: picking the published file");
+
+            // A release carries the executable for each platform. Which one is this program's is
+            // decided by shape rather than by name, because the names have changed once already.
+            var withAssets = UpdateChecker.ParseReleaseJson(
+                "{\"tag_name\": \"v1.7.0\", " +
+                "\"html_url\": \"https://github.com/swyf-modding/Switchboard/releases/tag/v1.7.0\", " +
+                "\"assets\": [" +
+                "{\"name\": \"Switchboard\", \"size\": 52723900, " +
+                " \"browser_download_url\": \"https://example.invalid/Switchboard\", " +
+                " \"digest\": \"sha256:" + new string('a', 64) + "\"}," +
+                "{\"name\": \"Switchboard.exe\", \"size\": 52832582, " +
+                " \"browser_download_url\": \"https://example.invalid/Switchboard.exe\", " +
+                " \"digest\": \"sha256:" + new string('b', 64) + "\"}]}");
+
+            Check("finds the Windows file",
+                withAssets.AssetFor(true).Name, "Switchboard.exe");
+            Check("finds the other file",
+                withAssets.AssetFor(false).Name, "Switchboard");
+            Check("reads the digest",
+                withAssets.AssetFor(true).Sha256, new string('b', 64));
+
+            // The pre-rename release still has to be understood, or the update button would be
+            // missing for anyone on the build that came before it.
+            var oldAssets = UpdateChecker.ParseReleaseJson(
+                "{\"tag_name\": \"v1.6.0\", " +
+                "\"html_url\": \"https://github.com/swyf-modding/Switchboard/releases/tag/v1.6.0\", " +
+                "\"assets\": [" +
+                "{\"name\": \"ScamWYF.Launcher\", \"size\": 52723900, " +
+                " \"browser_download_url\": \"https://example.invalid/ScamWYF.Launcher\"}," +
+                "{\"name\": \"ScamWYF.Launcher.exe\", \"size\": 52832582, " +
+                " \"browser_download_url\": \"https://example.invalid/ScamWYF.Launcher.exe\"}]}");
+
+            Check("finds the Windows file in the old release too",
+                oldAssets.AssetFor(true).Name, "ScamWYF.Launcher.exe");
+            Check("a release with no digest has none",
+                oldAssets.AssetFor(true).Sha256, null);
+
+            // A zip is a package, not a program: there is no binary to put in place, so it is
+            // never the answer.
+            var zipOnly = UpdateChecker.ParseReleaseJson(
+                "{\"tag_name\": \"v1.5.3\", " +
+                "\"html_url\": \"https://github.com/swyf-modding/Switchboard/releases/tag/v1.5.3\", " +
+                "\"assets\": [" +
+                "{\"name\": \"ScamWYF.Launcher-v1.5.3.zip\", \"size\": 52723900, " +
+                " \"browser_download_url\": \"https://example.invalid/x.zip\"}]}");
+
+            Check("a zip is not an installable file", zipOnly.AssetFor(false) == null, true);
+            Check("a zip is not a Windows file either", zipOnly.AssetFor(true) == null, true);
+
+            Section("Self-update: the replacing script");
+
+            // The part that actually has to work: a script that is handed a file and a running
+            // program, and has to put the file in the program's place and start it.
+            var work = Path.Combine(Path.GetTempPath(), "switchboard-selftest-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(work);
+
+            var marker = Path.Combine(work, "started.txt");
+            var target = Path.Combine(work, OperatingSystem.IsWindows() ? "target.exe" : "target");
+            var replacement = Path.Combine(work, OperatingSystem.IsWindows() ? "replacement.exe" : "replacement");
+
+            // The program that is "running" and the file that replaces it. Two different system
+            // programs, so that the replacement is distinguishable from what it replaced - and
+            // both are copies, so the real ones are never touched.
+            string[] args;
+            if (OperatingSystem.IsWindows())
+            {
+                var system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+                File.Copy(Path.Combine(system, "where.exe"), target, true);
+                File.Copy(Path.Combine(system, "cmd.exe"), replacement, true);
+
+                var markerScript = Path.Combine(work, "marker.cmd");
+                File.WriteAllText(markerScript, "@echo off\r\necho new > \"" + marker + "\"\r\n");
+                args = new[] { "/c", markerScript };
+            }
+            else
+            {
+                File.Copy("/bin/true", target, true);
+                File.Copy("/bin/sh", replacement, true);
+
+                var markerScript = Path.Combine(work, "marker.sh");
+                File.WriteAllText(markerScript, "#!/bin/sh\necho new > \"" + marker + "\"\n");
+                args = new[] { markerScript };
+            }
+
+            var script = SelfUpdate.WriteScript(target, replacement, Environment.ProcessId,
+                args, "selftest" + Guid.NewGuid().ToString("N"));
+
+            Check("the script was written", File.Exists(script), true);
+
+            // The script deletes the file it copied from once it is done with it, so its size has
+            // to be read now rather than after the script has run.
+            var replacementLength = new FileInfo(replacement).Length;
+
+            // Hold the target open, the way a running program holds its own file: the copy cannot
+            // succeed while it is locked, and the script has to keep trying.
+            using (var held = new FileStream(target, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                SelfUpdate.StartScript(script);
+
+                Thread.Sleep(1500);
+
+                if (OperatingSystem.IsWindows())
+                {
+                    Check("the locked file is not replaced yet",
+                        new FileInfo(target).Length != replacementLength, true);
+                }
+            }
+
+            // Once it is released the script's next attempt has to succeed.
+            var replaced = false;
+            for (int i = 0; i < 40; i++)
+            {
+                Thread.Sleep(500);
+                if (new FileInfo(target).Length == replacementLength) { replaced = true; break; }
+            }
+
+            Check("the script replaces the file once it is released", replaced, true);
+
+            // And the new file has to be started, or the person is left with a program that does
+            // not open.
+            var started = false;
+            for (int i = 0; i < 40; i++)
+            {
+                Thread.Sleep(500);
+                if (File.Exists(marker)) { started = true; break; }
+            }
+
+            Check("the script starts the new file", started, true);
+
+            try { Directory.Delete(work, true); } catch (Exception) { }
         }
 
         private static void UpdateIsOffered(string current, string latest)

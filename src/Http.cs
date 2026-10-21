@@ -40,6 +40,16 @@ namespace Switchboard
         /// <summary>Refused rather than truncated, so a huge file fails instead of half-installing.</summary>
         internal const long MaxDownloadBytes = 32L * 1024 * 1024;
 
+        /// <summary>
+        /// The cap for the self-update, which is a whole executable rather than a mod.
+        /// </summary>
+        /// <remarks>
+        /// The mod cap is deliberately tight, because the largest thing a mod should be is a few
+        /// hundred kilobytes. This download is the tool itself - tens of megabytes - so it needs a
+        /// cap of its own rather than a larger version of the same one.
+        /// </remarks>
+        internal const long MaxUpdateBytes = 256L * 1024 * 1024;
+
         /// <summary>A JSON release listing is a few KB; this is only here to stop a runaway response.</summary>
         internal const int MaxTextBytes = 2 * 1024 * 1024;
 
@@ -60,6 +70,18 @@ namespace Switchboard
         /// </remarks>
         private static readonly HttpClient Client = BuildClient();
 
+        /// <summary>
+        /// A client of its own for the self-update download.
+        /// </summary>
+        /// <remarks>
+        /// The shared client's timeout is two minutes. That is right for a mod and wrong for the
+        /// tool itself: the update is tens of megabytes, and on a slow link that takes longer
+        /// than two minutes, so the timeout would abort it partway through and leave the person
+        /// with nothing. A separate client with a longer leash keeps the mod path's bound intact
+        /// rather than loosening it for everything.
+        /// </remarks>
+        private static readonly HttpClient UpdateClient = BuildUpdateClient();
+
         private static HttpClient BuildClient()
         {
             var handler = new SocketsHttpHandler
@@ -71,6 +93,18 @@ namespace Switchboard
             };
 
             return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(120) };
+        }
+
+        private static HttpClient BuildUpdateClient()
+        {
+            var handler = new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                AutomaticDecompression = DecompressionMethods.All,
+                ConnectTimeout = TimeSpan.FromSeconds(30)
+            };
+
+            return new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(30) };
         }
 
         /// <summary>
@@ -148,15 +182,41 @@ namespace Switchboard
         /// <returns>The SHA-256 of what was written, lower-case hex.</returns>
         public static string Download(string url, string destination, Action<long, long> progress)
         {
+            return Download(url, destination, MaxDownloadBytes, Client, progress);
+        }
+
+        /// <summary>
+        /// Fetch the self-update, which is a whole executable rather than a mod.
+        /// </summary>
+        /// <param name="url">https only.</param>
+        /// <param name="destination">Full path. Overwritten if it exists.</param>
+        /// <param name="progress">Called with (bytesSoFar, totalBytes); totalBytes is 0 if unsent.</param>
+        /// <returns>The SHA-256 of what was written, lower-case hex.</returns>
+        public static string DownloadUpdate(string url, string destination, Action<long, long> progress)
+        {
+            return Download(url, destination, MaxUpdateBytes, UpdateClient, progress);
+        }
+
+        /// <summary>
+        /// Fetch a file to disk with a cap of its own, reporting progress as it goes.
+        /// </summary>
+        /// <param name="url">https only.</param>
+        /// <param name="destination">Full path. Overwritten if it exists.</param>
+        /// <param name="maxBytes">Refused rather than truncated, so a huge file fails instead of half-installing.</param>
+        /// <param name="client">The client to use. Its timeout has to cover the whole download.</param>
+        /// <param name="progress">Called with (bytesSoFar, totalBytes); totalBytes is 0 if unsent.</param>
+        /// <returns>The SHA-256 of what was written, lower-case hex.</returns>
+        public static string Download(string url, string destination, long maxBytes, HttpClient client, Action<long, long> progress)
+        {
             if (!IsAcceptable(url)) throw new InvalidOperationException(ExplainRefusal(url));
 
-            using (var response = Send(url))
+            using (var response = Send(client, url))
             {
                 var total = response.Content.Headers.ContentLength ?? 0;
 
                 // Checked from the header, so an oversized file is refused before a single byte is
                 // written rather than after filling the temp folder.
-                if (total > MaxDownloadBytes)
+                if (total > maxBytes)
                 {
                     throw new IOException("that file is " + Describe(total) + ", which is far larger than any " +
                                           "mod should be. Download aborted");
@@ -173,7 +233,7 @@ namespace Switchboard
                     while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
                     {
                         written += read;
-                        if (written > MaxDownloadBytes)
+                        if (written > maxBytes)
                         {
                             throw new IOException("the download passed the size limit partway through, so it " +
                                                   "was abandoned. The file is incomplete");
@@ -204,6 +264,19 @@ namespace Switchboard
         /// </remarks>
         private static HttpResponseMessage Send(string url)
         {
+            return Send(Client, url);
+        }
+
+        /// <summary>
+        /// Fetch a URL with a particular client, following redirects by hand so each hop's scheme can be checked.
+        /// </summary>
+        /// <remarks>
+        /// The response body is left unread (<see cref="HttpCompletionOption.ResponseHeadersRead"/>),
+        /// so a redirect is rejected before its body is downloaded and a large download can be checked
+        /// against the cap before it is written.
+        /// </remarks>
+        private static HttpResponseMessage Send(HttpClient client, string url)
+        {
             var current = url;
 
             for (var hop = 0; hop <= MaxRedirects; hop++)
@@ -220,7 +293,7 @@ namespace Switchboard
                 {
                     var request = new HttpRequestMessage(HttpMethod.Get, current);
                     request.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
-                    response = Client.Send(request, HttpCompletionOption.ResponseHeadersRead);
+                    response = client.Send(request, HttpCompletionOption.ResponseHeadersRead);
                 }
                 catch (Exception ex)
                 {

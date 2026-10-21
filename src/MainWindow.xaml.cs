@@ -345,7 +345,21 @@ namespace Switchboard
                             // about it. The instruction is the part people have to act on, and it
                             // reads as an instruction when it is not buried in a sentence.
                             UpdateText.Text = "Switchboard " + latest.TagName + " is available - you have " + current + ".";
-                            UpdateHint.Text = "Download it and unpack it over this one. Your game install is untouched.";
+
+                            // The button is only offered when the release actually publishes this
+                            // program, so it is never a button that cannot work. A release published
+                            // before the rename carries the old name, and installing that would
+                            // replace this program with a different one.
+                            var asset = latest.AssetForCurrentPlatform();
+                            var installable = asset != null && SelfUpdate.IsThisProgram(asset);
+
+                            UpdateNowButton.IsVisible = installable;
+                            UpdateNowButton.IsEnabled = installable;
+
+                            UpdateHint.Text = installable
+                                ? "Update now and it replaces this one. Your game install is untouched."
+                                : "Download it from the release page and put it over this one. Your game install is untouched.";
+
                             UpdateBar.IsVisible = true;
                             Status("Switchboard " + latest.TagName + " is available - see the bar above.", true);
                         }
@@ -377,6 +391,80 @@ namespace Switchboard
         private void OnCheckUpdates(object sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             CheckForSwitchboardUpdate(false);
+        }
+
+        /// <summary>
+        /// Replace this program with the published build.
+        /// </summary>
+        /// <remarks>
+        /// The release is one executable, so there is nothing to unpack: the app fetches it, checks
+        /// it against the checksum GitHub published, and hands the replacement to a script that
+        /// puts it in place once this process has gone.
+        ///
+        /// The whole thing runs off the UI thread, because it is a network round trip for tens of
+        /// megabytes, and the window stays up to show the progress.
+        /// </remarks>
+        private void OnUpdateNow(object sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            if (Busy) return;
+
+            var release = _latestRelease;
+            if (release == null)
+            {
+                Status("There is no release to update to.", false);
+                return;
+            }
+
+            var asset = release.AssetForCurrentPlatform();
+            if (asset == null)
+            {
+                Status("That release has no download for this platform - the release page has what there is.", false);
+                return;
+            }
+
+            if (!SelfUpdate.IsThisProgram(asset))
+            {
+                Status("That release publishes \"" + asset.Name + "\", which is a different program from " +
+                       "this one, so it was not installed. The release page is still there.", false);
+                return;
+            }
+
+            SetBusy(true);
+            UpdateNowButton.IsEnabled = false;
+
+            // Neutral, not green: a download in progress is not a success, and painting the
+            // status line green for it would make every ordinary moment look like an achievement.
+            State("Downloading the update...");
+
+            new Thread(delegate ()
+            {
+                string failure = null;
+
+                try
+                {
+                    SelfUpdate.Apply(asset, delegate (string line)
+                    {
+                        OnUi(delegate { State(line); });
+                    });
+                }
+                catch (Exception ex)
+                {
+                    failure = ex.Message;
+                }
+
+                if (failure != null)
+                {
+                    OnUi(delegate
+                    {
+                        SetBusy(false);
+                        UpdateNowButton.IsEnabled = true;
+                        Status("The update did not go through: " + failure, false);
+                    });
+                }
+            })
+            {
+                IsBackground = true
+            }.Start();
         }
 
         private void OnViewRelease(object sender, Avalonia.Interactivity.RoutedEventArgs e)

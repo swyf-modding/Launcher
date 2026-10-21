@@ -45,6 +45,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
@@ -59,16 +60,30 @@
                                Foreground="{StaticResource MutedBrush}" />
                 </StackPanel>
 
-                <Button x:Name="ViewReleaseButton"
+                <!--
+                    The release is one executable, so there is nothing to unpack and the app can
+                    replace itself. This is the button that does it; the release page is still
+                    there for anyone who would rather see what they are getting first.
+                -->
+                <Button x:Name="UpdateNowButton"
                         Grid.Column="1"
-                        Content="View release"
+                        Content="Update now"
                         Margin="12,0,0,0"
-                        MinWidth="100"
+                        MinWidth="110"
                         VerticalAlignment="Center"
                         Theme="{StaticResource AccentButton}"
+                        Click="OnUpdateNow" />
+
+                <Button x:Name="ViewReleaseButton"
+                        Grid.Column="2"
+                        Content="Release page"
+                        Margin="8,0,0,0"
+                        MinWidth="110"
+                        VerticalAlignment="Center"
+                        Theme="{StaticResource FlatButton}"
                         Click="OnViewRelease" />
 
-                <Button Grid.Column="2"
+                <Button Grid.Column="3"
                         Content="Dismiss"
                         Margin="8,0,0,0"
                         MinWidth="80"

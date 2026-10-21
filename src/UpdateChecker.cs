@@ -13,10 +13,49 @@ namespace Switchboard
         {
             TagName = tagName;
             PageUrl = pageUrl;
+            Assets = new List<ReleaseAsset>();
         }
 
         public string TagName { get; private set; }
         public string PageUrl { get; private set; }
+
+        /// <summary>Every file attached to the release.</summary>
+        public List<ReleaseAsset> Assets { get; private set; }
+
+        /// <summary>The published binary for this platform, or null if the release has none.</summary>
+        public ReleaseAsset AssetForCurrentPlatform()
+        {
+            return AssetFor(OperatingSystem.IsWindows());
+        }
+
+        /// <summary>
+        /// The published binary for a platform: the .exe on Windows, and the one with no extension
+        /// anywhere else.
+        /// </summary>
+        /// <remarks>
+        /// Matched by shape rather than by name, because the names have changed once already - the
+        /// release this code was written against ships "ScamWYF.Launcher" and "ScamWYF.Launcher.exe",
+        /// and the next one ships "Switchboard" and "Switchboard.exe". A zip is never the answer: a
+        /// release that only has a zip has no binary to install, and the in-place update cannot be
+        /// offered for it.
+        /// </remarks>
+        public ReleaseAsset AssetFor(bool windows)
+        {
+            foreach (var asset in Assets)
+            {
+                if (windows)
+                {
+                    if (asset.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) return asset;
+                }
+                else if (!asset.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+                         !asset.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    return asset;
+                }
+            }
+
+            return null;
+        }
     }
 
     /// <summary>
@@ -106,7 +145,26 @@ namespace Switchboard
                     pageUrl = page.GetString();
                 }
 
-                return new SwitchboardRelease(tag.GetString().Trim(), pageUrl);
+                var release = new SwitchboardRelease(tag.GetString().Trim(), pageUrl);
+
+                // The files attached to the release. This is what makes an in-place update possible:
+                // the published build is one executable, so the app can fetch it and replace itself
+                // rather than sending the person to a web page to do it by hand.
+                if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var entry in assets.EnumerateArray())
+                    {
+                        // The files attached to the release. This is what makes an in-place update
+                        // possible: the published build is one executable, so the app can fetch it and
+                        // replace itself rather than sending the person to a web page to do it by hand.
+                        var asset = ReleaseAsset.FromJson(entry);
+                        if (asset == null) continue;
+
+                        release.Assets.Add(asset);
+                    }
+                }
+
+                return release;
             }
         }
 

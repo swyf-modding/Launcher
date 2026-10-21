@@ -244,6 +244,25 @@ argument overrides where the game is looked for. On Windows it starts the game's
 through Steam, because that is how the game is played there and it keeps the user's chosen Proton and
 their overlays. See below.
 
+#### Updating the switchboard itself
+
+The release is one executable rather than a zip, so there is nothing to unpack and the app can replace
+itself. When a newer release is published, the bar at the top offers **Update now**: the app fetches the
+published file, checks it against the SHA-256 GitHub published for it, and hands the replacement to a
+short script that puts it in place once the running copy has gone, then starts it. The download is
+checked before anything is installed, so a corrupted or substituted file is discarded rather than run —
+the same integrity guarantee a mod download gets, and the same limit of it.
+
+The script is a script rather than a second copy of the program, because a copy would be the very file
+being replaced and would have the same problem: a running executable cannot be overwritten, because
+Windows locks the image. The script waits for the program to exit and retries the copy until it
+succeeds. It carries its settings in a file beside it rather than in its command line, because the paths
+have to survive being read by two different shells.
+
+A release published before the project was renamed carries the old name, and the button is not offered
+for it: installing that would replace this program with a different one, which calls itself something
+else and is laid out differently. The release page is still there for those.
+
 #### Playing on Linux
 
 The game is a Windows build, so on Linux it runs under **Proton**, and the switchboard does the Windows
@@ -387,6 +406,7 @@ src/
 |-- ModCatalogue.cs    The mod list, live from ModCatalogue with a built-in fallback, and what GitHub says each latest release is
 |-- ModInstaller.cs    Download, unpack, verify, and only then install
 |-- UpdateChecker.cs   Is a newer switchboard released? - the tag comparison behind the update bar
+|-- SelfUpdate.cs     Replacing this program with a newer one: the download, the checksum, the script
 |-- ScriptRunner.cs    Running a mod's optional post-install script, and collecting what it prints
 `-- views/
     |-- SetupView      The Setup tab

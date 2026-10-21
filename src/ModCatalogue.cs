@@ -117,37 +117,6 @@ namespace Switchboard
         }
     }
 
-    /// <summary>A downloadable file attached to a GitHub release.</summary>
-    internal sealed class ReleaseAsset
-    {
-        public string Name { get; private set; }
-        public long Size { get; private set; }
-        public string DownloadUrl { get; private set; }
-
-        /// <summary>
-        /// GitHub's own SHA-256 for the asset, when it publishes one.
-        /// </summary>
-        /// <remarks>
-        /// Worth having, and worth being precise about what it proves: it catches a truncated or mangled
-        /// download, and it catches an asset host that is not GitHub's. It does not make the mod
-        /// trustworthy - the digest comes from the same place as the file - so it is an integrity check,
-        /// not a signature, and nothing in the UI should imply otherwise.
-        /// </remarks>
-        public string Sha256 { get; private set; }
-
-        /// <summary>
-        /// A public constructor, because the URL path builds one too: there is no GitHub listing behind
-        /// that download, so the caller supplies what would otherwise have been read from the API.
-        /// </summary>
-        public ReleaseAsset(string name, long size, string downloadUrl, string sha256)
-        {
-            Name = name;
-            Size = size;
-            DownloadUrl = downloadUrl;
-            Sha256 = sha256;
-        }
-    }
-
     /// <summary>A mod, and the latest published release of it.</summary>
     internal sealed class ReleaseInfo
     {
@@ -307,7 +276,7 @@ namespace Switchboard
                     throw new IOException("The mod list names no schema version");
                 }
 
-                var schema = Number(root, "schemaVersion");
+                var schema = GitHubJson.Number(root, "schemaVersion");
                 if (schema != 1)
                 {
                     throw new IOException("The mod list uses schema version " + schema + ", which this switchboard " +
@@ -348,27 +317,27 @@ namespace Switchboard
                 throw new IOException("The mod list's " + where + " is not an object");
             }
 
-            var repo = (Text(entry, "repo") ?? "").Trim();
+            var repo = (GitHubJson.Text(entry, "repo") ?? "").Trim();
             if (!IsAccountName(repo))
             {
                 throw new IOException("The mod list's " + where + " names no repository");
             }
             where = "mod '" + repo + "'";
 
-            var ownerValue = Text(entry, "owner");
+            var ownerValue = GitHubJson.Text(entry, "owner");
             var owner = ownerValue != null ? ownerValue.Trim() : DefaultOwner;
             if (!IsAccountName(owner))
             {
                 throw new IOException("The mod list's " + where + " names no valid owner");
             }
 
-            var displayName = Text(entry, "displayName");
+            var displayName = GitHubJson.Text(entry, "displayName");
             if (string.IsNullOrWhiteSpace(displayName) || displayName.Trim().Length > 80)
             {
                 throw new IOException("The mod list's " + where + " has no usable display name");
             }
 
-            var summary = Text(entry, "summary");
+            var summary = GitHubJson.Text(entry, "summary");
             if (string.IsNullOrWhiteSpace(summary) || summary.Trim().Length > 500)
             {
                 throw new IOException("The mod list's " + where + " has no usable summary");
@@ -440,7 +409,7 @@ namespace Switchboard
                 throw new IOException("The mod list's " + which + " is not an object");
             }
 
-            var script = Text(step, "script");
+            var script = GitHubJson.Text(step, "script");
             if (string.IsNullOrWhiteSpace(script) || script.Trim().Length > 100 ||
                 script.IndexOfAny(NameSeparators) >= 0 ||
                 !script.Trim().EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
@@ -448,7 +417,7 @@ namespace Switchboard
                 throw new IOException("The mod list's " + which + " names no script this switchboard will run");
             }
 
-            var description = Text(step, "description");
+            var description = GitHubJson.Text(step, "description");
             if (string.IsNullOrWhiteSpace(description) || description.Trim().Length > 280)
             {
                 throw new IOException("The mod list's " + which + " says nothing usable about what it does");
@@ -470,7 +439,7 @@ namespace Switchboard
                 throw new IOException("The mod list's " + where + " names a file that is not an object");
             }
 
-            var name = Text(file, "fileName");
+            var name = GitHubJson.Text(file, "fileName");
             if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 100 ||
                 name.IndexOfAny(NameSeparators) >= 0 ||
                 name.Trim() == "." || name.Trim() == ".." ||
@@ -479,7 +448,7 @@ namespace Switchboard
                 throw new IOException("The mod list's " + where + " names a file this switchboard will not install");
             }
 
-            var folderText = Text(file, "folder");
+            var folderText = GitHubJson.Text(file, "folder");
             ModFolder folder;
             if (string.Equals(folderText, "plugins", StringComparison.OrdinalIgnoreCase))
             {
@@ -545,8 +514,8 @@ namespace Switchboard
                     throw new IOException("GitHub's reply was not in the expected shape");
                 }
 
-                var tag = Text(root, "tag_name");
-                var page = Text(root, "html_url");
+                var tag = GitHubJson.Text(root, "tag_name");
+                var page = GitHubJson.Text(root, "html_url");
 
                 var package = FindPackage(root);
                 if (package == null)
@@ -569,78 +538,20 @@ namespace Switchboard
 
             foreach (var entry in raw.EnumerateArray())
             {
-                if (entry.ValueKind != JsonValueKind.Object) continue;
+                var asset = ReleaseAsset.FromJson(entry);
+                if (asset == null) continue;
 
-                var name = Text(entry, "name");
-                if (string.IsNullOrEmpty(name)) continue;
+                // A mod is installed from a zip, so that is the only asset that will do.
+                if (!asset.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) continue;
 
-                if (!name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!Http.IsAcceptable(asset.DownloadUrl)) continue;
 
-                var url = Text(entry, "browser_download_url");
-                if (!Http.IsAcceptable(url)) continue;
-
-                return new ReleaseAsset(name, Number(entry, "size"), url, Digest(entry, "digest"));
+                return asset;
             }
 
             return null;
         }
 
-        /// <summary>
-        /// GitHub's digest field, which is "sha256:&lt;hex&gt;" or absent.
-        /// </summary>
-        /// <remarks>
-        /// Returned as bare hex so it can be compared with what was actually downloaded, which is hashed
-        /// locally. An unrecognised prefix yields null rather than a hash that would never match.
-        /// </remarks>
-        private static string Digest(JsonElement asset, string key)
-        {
-            var raw = Text(asset, key);
-            if (string.IsNullOrEmpty(raw)) return null;
-
-            var colon = raw.IndexOf(':');
-            if (colon < 0) return null;
-
-            var algorithm = raw.Substring(0, colon);
-            if (!string.Equals(algorithm, "sha256", StringComparison.OrdinalIgnoreCase)) return null;
-
-            var hex = raw.Substring(colon + 1).Trim();
-            return hex.Length == 64 ? hex.ToLowerInvariant() : null;
-        }
-
-        private static string Text(JsonElement from, string key)
-        {
-            if (!from.TryGetProperty(key, out var value)) return null;
-
-            switch (value.ValueKind)
-            {
-                case JsonValueKind.String:
-                    return value.GetString();
-                case JsonValueKind.Number:
-                    return value.GetRawText();
-                case JsonValueKind.True:
-                    return "True";
-                case JsonValueKind.False:
-                    return "False";
-                default:
-                    return null;
-            }
-        }
-
-        private static long Number(JsonElement from, string key)
-        {
-            if (!from.TryGetProperty(key, out var value)) return 0;
-
-            if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number)) return number;
-
-            // A numeric field sent as a string still counts; the old reader coerced it with Convert.ToInt64.
-            if (value.ValueKind == JsonValueKind.String &&
-                long.TryParse(value.GetString(), out var parsed))
-            {
-                return parsed;
-            }
-
-            return 0;
-        }
 
         /// <summary>
         /// The destination folder for a file, given the install.
