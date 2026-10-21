@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -794,13 +795,14 @@ namespace Switchboard.Tests
                 args = new[] { markerScript };
             }
 
-            var script = SelfUpdate.WriteScript(target, replacement, Environment.ProcessId,
+            var script = SelfUpdate.WriteScript(target, replacement, PlaceholderPid(),
                 args, "selftest" + Guid.NewGuid().ToString("N"));
 
             Check("the script was written", File.Exists(script), true);
 
-            // The script deletes the file it copied from once it is done with it, so its size has
-            // to be read now rather than after the script has run.
+            // The script waits for a program to go before it replaces the file, so the test gives
+            // it one that has already gone rather than the test's own process - which would
+            // wait for the test to finish, and the test is waiting for the script.
             var replacementLength = new FileInfo(replacement).Length;
 
             // Hold the target open, the way a running program holds its own file: the copy cannot
@@ -840,6 +842,38 @@ namespace Switchboard.Tests
             Check("the script starts the new file", started, true);
 
             try { Directory.Delete(work, true); } catch (Exception) { }
+        }
+
+        /// <summary>
+        /// The process id of a program that has already exited, for the script to wait for.
+        /// </summary>
+        /// <remarks>
+        /// The script waits for a program to go before it replaces the file. The test cannot use its
+        /// own process for that, because the test is waiting for the script - so it starts a
+        /// throwaway one, lets it finish, and hands over its id.
+        /// </remarks>
+        private static int PlaceholderPid()
+        {
+            var info = new ProcessStartInfo { UseShellExecute = false, CreateNoWindow = true };
+
+            if (OperatingSystem.IsWindows())
+            {
+                info.FileName = "cmd.exe";
+                info.ArgumentList.Add("/c");
+                info.ArgumentList.Add("exit");
+                info.ArgumentList.Add("0");
+            }
+            else
+            {
+                info.FileName = "/bin/true";
+            }
+
+            var process = Process.Start(info);
+            if (process == null) return 0;
+
+            var id = process.Id;
+            process.WaitForExit(10000);
+            return id;
         }
 
         private static void UpdateIsOffered(string current, string latest)

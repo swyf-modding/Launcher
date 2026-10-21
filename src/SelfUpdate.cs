@@ -308,6 +308,11 @@ namespace Switchboard
         /// <summary>
         /// The other half: a shell script that waits for this process to exit, then replaces the file.
         /// </summary>
+        /// <remarks>
+        /// The wait is capped, so a process that never goes does not leave the update hanging for
+        /// ever. Unlike Windows, a running file can be replaced here - the kernel keeps the old
+        /// inode alive for the process that is using it - so the copy itself never has to wait.
+        /// </remarks>
         private static string UnixScript()
         {
             var lines = new StringBuilder();
@@ -316,6 +321,7 @@ namespace Switchboard
             lines.Append("CFG=\"${0%.*}.txt\"\n");
             lines.Append("TARGET=\"\"\nNEW=\"\"\nPID=\"\"\n");
             lines.Append("while IFS='|' read -r key value; do\n");
+            lines.Append("  value=\"${value%%$'\\r'}\"\n");
             lines.Append("  case \"$key\" in\n");
             lines.Append("    TARGET) TARGET=\"$value\" ;;\n");
             lines.Append("    NEW) NEW=\"$value\" ;;\n");
@@ -327,13 +333,22 @@ namespace Switchboard
             lines.Append("# stays one argument.\n");
             lines.Append("set --\n");
             lines.Append("while IFS='|' read -r key value; do\n");
+            lines.Append("  value=\"${value%%$'\\r'}\"\n");
             lines.Append("  if [ \"$key\" = \"ARG\" ]; then set -- \"$@\" \"$value\"; fi\n");
             lines.Append("done < \"$CFG\"\n");
             lines.Append("\n");
-            lines.Append("# The copy fails while the running program holds the file open, so wait\n");
-            lines.Append("# for it to go.\n");
-            lines.Append("while kill -0 \"$PID\" 2>/dev/null; do sleep 1; done\n");
-            lines.Append("cp -f \"$NEW\" \"$TARGET\" || exit 1\n");
+            lines.Append("# Wait for the program to go, so the file is not being used while it is\n");
+            lines.Append("# replaced. Capped, so a process that never exits cannot hang the update.\n");
+            lines.Append("i=0\n");
+            lines.Append("while kill -0 \"$PID\" 2>/dev/null && [ $i -lt 120 ]; do\n");
+            lines.Append("  sleep 1\n");
+            lines.Append("  i=$((i + 1))\n");
+            lines.Append("done\n");
+            lines.Append("\n");
+            lines.Append("# Copied beside the target and moved over it, so a failed copy leaves the\n");
+            lines.Append("# program that is already there rather than nothing at all.\n");
+            lines.Append("cp -f \"$NEW\" \"$TARGET.new\" || exit 1\n");
+            lines.Append("mv -f \"$TARGET.new\" \"$TARGET\" || exit 1\n");
             lines.Append("chmod +x \"$TARGET\" 2>/dev/null\n");
             lines.Append("rm -f \"$NEW\" \"$CFG\"\n");
             lines.Append("\"$TARGET\" \"$@\" >/dev/null 2>&1 &\n");
