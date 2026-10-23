@@ -48,6 +48,20 @@ namespace Switchboard.Views
         public string Size { get { return Http.Describe(Release.Package.Size); } }
         public string What { get { return Release.Source.Summary; } }
 
+        /// <summary>
+        /// Whether this entry is pinned to a reviewed release, in the words the list uses. The
+        /// list is where a person chooses, so it is where the difference has to be visible.
+        /// </summary>
+        public string Reviewed
+        {
+            get
+            {
+                if (Release.Source.IsVerified) return "yes";
+                if (Release.Source.IsPinned) return "partly";
+                return "no";
+            }
+        }
+
         public string Installed
         {
             get { return _installed; }
@@ -193,7 +207,7 @@ namespace Switchboard.Views
                 return;
             }
 
-            SetBusy(true, "Checking GitHub for the latest releases...");
+            SetBusy(true, "Checking GitHub for the listed releases...");
 
             Run(delegate
             {
@@ -231,7 +245,29 @@ namespace Switchboard.Views
                         _rows.Add(new ReleaseRow(release, DescribeInstalled(release.Source)));
                     }
 
+                    var reviewed = 0;
+                    foreach (var release in found)
+                    {
+                        if (release.Source.IsVerified) reviewed++;
+                    }
+
                     var report = _rows.Count + " mod(s) checked against GitHub, from the " + listNote + ".";
+
+                    // The count is worth saying out loud. "7 mods" and "7 mods, 6 of them reviewed"
+                    // are different offers, and the difference is the whole point of the pins.
+                    if (reviewed == _rows.Count)
+                    {
+                        report += " Every one is pinned to a reviewed release.";
+                    }
+                    else if (reviewed == 0)
+                    {
+                        report += " None of them are pinned to a reviewed release, so Install will say so for each.";
+                    }
+                    else
+                    {
+                        report += " " + reviewed + " of them are pinned to a reviewed release; the rest are " +
+                                  "listed without pins and Install will say so.";
+                    }
 
                     if (problems.Count > 0)
                     {
@@ -265,20 +301,59 @@ namespace Switchboard.Views
             });
         }
 
-        /// <summary>Whether a mod's own file is present, which is not the same as it being current.</summary>
+        /// <summary>
+        /// Whether a mod's file is present, current, and still the file the catalogue reviewed.
+        /// </summary>
+        /// <remarks>
+        /// Pinned plugin files are hashed and compared, so an install that was overwritten after
+        /// the fact is not described as installed. The shared library is skipped: several entries
+        /// ship their own copy, so whichever was installed last is the one on disk.
+        /// </remarks>
         private string DescribeInstalled(ModSource source)
         {
             var present = 0;
+            var checkedFiles = 0;
+            var matching = 0;
+
             foreach (var file in source.Files)
             {
-                if (File.Exists(Path.Combine(ModCatalogue.FolderFor(Host.Install, file.Folder), file.FileName)))
+                var path = Path.Combine(ModCatalogue.FolderFor(Host.Install, file.Folder), file.FileName);
+                if (!File.Exists(path)) continue;
+
+                present++;
+
+                // Only a mod's own code, and only what the catalogue can be compared against.
+                if (!file.IsPinned || file.Folder != ModFolder.Plugins) continue;
+
+                checkedFiles++;
+                try
                 {
-                    present++;
+                    if (string.Equals(ModInstaller.Sha256Of(path), file.Sha256, StringComparison.OrdinalIgnoreCase))
+                    {
+                        matching++;
+                    }
+                }
+                catch (Exception)
+                {
+                    // A file that cannot be read is not a file that matches.
                 }
             }
 
             if (present == 0) return "not installed";
-            return present == source.Files.Length ? "installed" : "partly (" + present + "/" + source.Files.Length + ")";
+
+            if (present == source.Files.Length)
+            {
+                // Pinned, and something on disk is not the reviewed file: say so rather than
+                // calling it installed. A file replaced after the install is the case this is for.
+                if (checkedFiles > 0 && matching < checkedFiles)
+                {
+                    return "installed (differs)";
+                }
+
+                return "installed";
+            }
+
+            return "partly (" + present + "/" + source.Files.Length + ")";
         }
 
         private void InstallSelected()

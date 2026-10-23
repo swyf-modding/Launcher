@@ -37,15 +37,17 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="150" />
                     <ColumnDefinition Width="90" />
-                    <ColumnDefinition Width="90" />
-                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="80" />
+                    <ColumnDefinition Width="70" />
+                    <ColumnDefinition Width="110" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Mod" Classes="columnHeader" />
                 <TextBlock Grid.Column="1" Text="Release" Classes="columnHeader" />
-                <TextBlock Grid.Column="2" Text="Size" Classes="columnHeader" />
-                <TextBlock Grid.Column="3" Text="Installed" Classes="columnHeader" />
-                <TextBlock Grid.Column="4" Text="What it does" Classes="columnHeader" />
+                <TextBlock Grid.Column="2" Text="Reviewed" Classes="columnHeader" />
+                <TextBlock Grid.Column="3" Text="Size" Classes="columnHeader" />
+                <TextBlock Grid.Column="4" Text="Installed" Classes="columnHeader" />
+                <TextBlock Grid.Column="5" Text="What it does" Classes="columnHeader" />
             </Grid>
 
             <Border Grid.Row="0" Classes="rule" VerticalAlignment="Bottom" />
@@ -58,15 +60,17 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="150" />
                                     <ColumnDefinition Width="90" />
-                                    <ColumnDefinition Width="90" />
-                                    <ColumnDefinition Width="120" />
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="110" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="cell" />
                                 <TextBlock Grid.Column="1" Text="{Binding Tag}" Classes="cell" />
-                                <TextBlock Grid.Column="2" Text="{Binding Size}" Classes="cell" />
-                                <TextBlock Grid.Column="3" Text="{Binding Installed}" Classes="cell" />
-                                <TextBlock Grid.Column="4" Text="{Binding What}" Classes="cell" />
+                                <TextBlock Grid.Column="2" Text="{Binding Reviewed}" Classes="cell" />
+                                <TextBlock Grid.Column="3" Text="{Binding Size}" Classes="cell" />
+                                <TextBlock Grid.Column="4" Text="{Binding Installed}" Classes="cell" />
+                                <TextBlock Grid.Column="5" Text="{Binding What}" Classes="cell" />
                             </Grid>
                         </Border>
                     </DataTemplate>
@@ -115,6 +119,6 @@
         </Grid>
 
         <TextBlock Grid.Row="5" Classes="note" Foreground="{StaticResource WarnBrush}"
-                   Text="Installing a mod puts code in your game folder that BepInEx will load and run on the next launch. Only install what you trust.&#10;&#10;Mods are downloaded over https and checked against the SHA-256 GitHub publishes for them. That catches a corrupted download; it is not a signature, and it cannot tell you whether a mod is safe to run.&#10;&#10;Changes take effect on the next launch." />
+                   Text="Installing a mod puts code in your game folder that BepInEx will load and run on the next launch. Only install what you trust.&#10;&#10;A mod marked reviewed installs the release the catalogue lists, not the newest one the author has published, and each file is checked against the SHA-256 recorded when it was listed. A file that does not match is refused. That proves the bytes are the ones somebody approved; it is not a signature, and it cannot tell you whether a mod is safe to run.&#10;&#10;Changes take effect on the next launch." />
     </Grid>
 </UserControl>

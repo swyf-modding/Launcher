@@ -32,12 +32,38 @@ namespace Switchboard
         /// </remarks>
         public bool ExpectsPluginAttribute { get; private set; }
 
-        public ModFile(string fileName, ModFolder folder, bool expectsPluginAttribute)
+        /// <summary>
+        /// The SHA-256 the catalogue recorded when a person looked at this file, or null when the
+        /// entry is not pinned.
+        /// </summary>
+        /// <remarks>
+        /// Unlike GitHub's digest, this was written down at review time, so a match means these
+        /// are the bytes somebody approved.
+        /// </remarks>
+        public string Sha256 { get; private set; }
+
+        /// <summary>
+        /// What the file can reach outside the game process, as the catalogue's scan found it.
+        /// Never null; empty for a file that touches nothing outside the game.
+        /// </summary>
+        public string[] Capabilities { get; private set; }
+
+        /// <summary>What the file's [BepInPlugin] attribute declares, when it declares one.</summary>
+        public string[] BepInPlugin { get; private set; }
+
+        public ModFile(string fileName, ModFolder folder, bool expectsPluginAttribute,
+                       string sha256 = null, string[] capabilities = null, string[] bepInPlugin = null)
         {
             FileName = fileName;
             Folder = folder;
             ExpectsPluginAttribute = expectsPluginAttribute;
+            Sha256 = sha256;
+            Capabilities = capabilities ?? new string[0];
+            BepInPlugin = bepInPlugin ?? new string[0];
         }
+
+        /// <summary>Whether this file is pinned to the bytes somebody reviewed.</summary>
+        public bool IsPinned { get { return !string.IsNullOrEmpty(Sha256); } }
     }
 
     /// <summary>
@@ -61,24 +87,35 @@ namespace Switchboard
         /// <summary>What the prompt shows: what this does and what skipping costs. Shown verbatim.</summary>
         public string Description { get; private set; }
 
+        /// <summary>The SHA-256 the catalogue recorded for this script, or null when not pinned.</summary>
+        /// <remarks>A setup step reaches a shell, so it is the part that most needs pinning.</remarks>
+        public string Sha256 { get; private set; }
+
         /// <summary>Full path once the plan has verified it is in the download. Null before that.</summary>
         public string ScriptPath { get; private set; }
 
         /// <summary>The script's text, read at plan time so the prompt can show it. Null before that.</summary>
         public string ScriptText { get; private set; }
 
-        public PostInstallStep(string scriptName, string description)
-            : this(scriptName, description, null, null)
+        public PostInstallStep(string scriptName, string description, string sha256)
         {
+            ScriptName = scriptName;
+            Description = description;
+            Sha256 = sha256;
         }
 
-        public PostInstallStep(string scriptName, string description, string scriptPath, string scriptText)
+        public PostInstallStep(string scriptName, string description, string scriptPath, string scriptText,
+                               string sha256)
         {
             ScriptName = scriptName;
             Description = description;
             ScriptPath = scriptPath;
             ScriptText = scriptText;
+            Sha256 = sha256;
         }
+
+        /// <summary>Whether this script is pinned to the bytes somebody reviewed.</summary>
+        public bool IsPinned { get { return !string.IsNullOrEmpty(Sha256); } }
     }
 
     /// <summary>A mod this tool knows about, and can fetch.</summary>
@@ -93,8 +130,15 @@ namespace Switchboard
         /// <summary>Optional setup steps offered after installing, each deniable. Never null.</summary>
         public PostInstallStep[] PostInstall { get; private set; }
 
+        /// <summary>
+        /// The release the catalogue says somebody reviewed, or null when the entry is not pinned.
+        /// This is the version that is installed, not whatever the author published since.
+        /// </summary>
+        public string ApprovedVersion { get; private set; }
+
         public ModSource(string repo, string displayName, string summary, ModFile[] files,
-                         string owner = ModCatalogue.DefaultOwner, PostInstallStep[] postInstall = null)
+                         string owner = ModCatalogue.DefaultOwner, PostInstallStep[] postInstall = null,
+                         string approvedVersion = null)
         {
             Owner = string.IsNullOrEmpty(owner) ? ModCatalogue.DefaultOwner : owner;
             Repo = repo;
@@ -102,6 +146,34 @@ namespace Switchboard
             Summary = summary;
             Files = files;
             PostInstall = postInstall ?? new PostInstallStep[0];
+            ApprovedVersion = string.IsNullOrEmpty(approvedVersion) ? null : approvedVersion;
+            IsVerified = ComputeVerified();
+        }
+
+        /// <summary>Whether the entry names the release a person reviewed.</summary>
+        public bool IsPinned { get { return ApprovedVersion != null; } }
+
+        /// <summary>
+        /// Whether everything this entry installs is pinned to a hash: the release, every file and
+        /// every setup script. The UI reads it to say which entries were reviewed.
+        /// </summary>
+        public bool IsVerified { get; private set; }
+
+        private bool ComputeVerified()
+        {
+            if (!IsPinned) return false;
+
+            foreach (var file in Files)
+            {
+                if (!file.IsPinned) return false;
+            }
+
+            foreach (var step in PostInstall)
+            {
+                if (!step.IsPinned) return false;
+            }
+
+            return true;
         }
 
         /// <summary>owner/repo, which is what names a third-party entry's origin.</summary>
@@ -135,7 +207,7 @@ namespace Switchboard
     }
 
     /// <summary>
-    /// The known mods, and how to ask GitHub what the latest release of each one is.
+    /// The known mods, and how to ask GitHub for the release each one names.
     /// </summary>
     /// <remarks>
     /// A short list rather than a search, and that is the point. A list is reviewed: every entry names a
@@ -167,6 +239,60 @@ namespace Switchboard
         /// without a switchboard release, which is the point of fetching it instead of compiling it in.</summary>
         internal const string CatalogueUrl =
             "https://raw.githubusercontent.com/swyf-modding/ModCatalogue/main/mods.json";
+
+        /// <summary>
+        /// The capabilities the catalogue's scan can report, the same list as
+        /// tools/scan-capabilities.ps1. A name it cannot produce is refused rather than shown.
+        /// </summary>
+        internal static readonly string[] KnownCapabilities =
+        {
+            "base64",
+            "binary-serialization",
+            "dynamic-code",
+            "environment",
+            "filesystem-read",
+            "filesystem-write",
+            "native-interop",
+            "network",
+            "process",
+            "registry"
+        };
+
+        /// <summary>What a capability means, in the words the install confirmation uses.</summary>
+        internal static string DescribeCapability(string capability)
+        {
+            switch (capability)
+            {
+                case "process": return "can start other programs";
+                case "network": return "can use the network";
+                case "filesystem-read": return "can read files";
+                case "filesystem-write": return "can write files";
+                case "native-interop": return "can call native code";
+                case "dynamic-code": return "can load code at runtime";
+                case "base64": return "can encode or decode base64";
+                case "registry": return "can read the registry";
+                case "environment": return "can read the environment";
+                case "binary-serialization": return "can use BinaryFormatter";
+                default: return "can " + capability;
+            }
+        }
+
+        /// <summary>
+        /// A file's capabilities as one sentence, or null when it has none. Most are things mods
+        /// legitimately need; the point is that a change is visible.
+        /// </summary>
+        internal static string DescribeCapabilities(ModFile file)
+        {
+            if (file == null || file.Capabilities.Length == 0) return null;
+
+            var words = new List<string>();
+            foreach (var capability in file.Capabilities)
+            {
+                words.Add(DescribeCapability(capability));
+            }
+
+            return string.Join(", ", words.ToArray());
+        }
 
         private static readonly ModFile LibraryFile =
             new ModFile("ScamWYF.Modding.Core.dll", ModFolder.Core, false);
@@ -360,8 +486,45 @@ namespace Switchboard
                 files.Add(ParseFile(rawFile, where));
             }
 
-            return new ModSource(repo, displayName.Trim(), summary.Trim(), files.ToArray(), owner,
-                                 ParsePostInstall(entry, where));
+            var approved = GitHubJson.Text(entry, "approvedVersion");
+            if (approved != null)
+            {
+                approved = approved.Trim();
+                if (approved.Length == 0 || approved.Length > 100)
+                {
+                    throw new IOException("The mod list's " + where + " pins an unusable release");
+                }
+            }
+
+            var steps = ParsePostInstall(entry, where);
+            var source = new ModSource(repo, displayName.Trim(), summary.Trim(), files.ToArray(), owner,
+                                       steps, approved);
+
+            // A pinned entry has to pin everything it installs. An approvedVersion whose files or
+            // scripts are missing a hash is not a reviewed release with a gap in it - it is an
+            // entry that would be installed on a promise, so it is refused rather than half-trusted.
+            if (source.IsPinned)
+            {
+                foreach (var file in source.Files)
+                {
+                    if (!file.IsPinned)
+                    {
+                        throw new IOException("The mod list's " + where + " pins " + approved + " but gives " +
+                                              file.FileName + " no hash to check it against");
+                    }
+                }
+
+                foreach (var step in source.PostInstall)
+                {
+                    if (!step.IsPinned)
+                    {
+                        throw new IOException("The mod list's " + where + " pins " + approved + " but gives the " +
+                                              "setup script " + step.ScriptName + " no hash to check it against");
+                    }
+                }
+            }
+
+            return source;
         }
 
         /// <summary>
@@ -423,7 +586,35 @@ namespace Switchboard
                 throw new IOException("The mod list's " + which + " says nothing usable about what it does");
             }
 
-            return new PostInstallStep(script.Trim(), description.Trim());
+            return new PostInstallStep(script.Trim(), description.Trim(), Hash(step, "sha256", which));
+        }
+
+        /// <summary>
+        /// A pinned hash: 64 hex characters, or null when the field is absent.
+        /// </summary>
+        /// <remarks>
+        /// An unreadable hash is refused rather than ignored. Ignoring it would turn a pin that
+        /// was written wrong into an entry that is not pinned at all, which is the one thing the
+        /// field exists to prevent.
+        /// </remarks>
+        private static string Hash(JsonElement from, string key, string where)
+        {
+            var raw = GitHubJson.Text(from, key);
+            if (raw == null) return null;
+
+            var trimmed = raw.Trim();
+            if (trimmed.Length != 64)
+            {
+                throw new IOException("The mod list's " + where + " has a " + key + " that is not a sha256");
+            }
+
+            foreach (var c in trimmed)
+            {
+                var ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+                if (!ok) throw new IOException("The mod list's " + where + " has a " + key + " that is not a sha256");
+            }
+
+            return trimmed.ToLowerInvariant();
         }
 
         /// <summary>One file entry: a bare dll name and a known folder, nothing else.</summary>
@@ -471,7 +662,54 @@ namespace Switchboard
                                       name.Trim() + " is a plugin");
             }
 
-            return new ModFile(name.Trim(), folder, flag.ValueKind == JsonValueKind.True);
+            var capabilities = Strings(file, "capabilities", where + " " + name.Trim());
+            foreach (var capability in capabilities)
+            {
+                if (Array.IndexOf(KnownCapabilities, capability) < 0)
+                {
+                    throw new IOException("The mod list's " + where + " gives " + name.Trim() + " a capability " +
+                                          "this switchboard does not know: " + capability);
+                }
+            }
+
+            return new ModFile(name.Trim(), folder, flag.ValueKind == JsonValueKind.True,
+                               Hash(file, "sha256", where + " " + name.Trim()),
+                               capabilities,
+                               Strings(file, "bepInPlugin", where + " " + name.Trim()));
+        }
+
+        /// <summary>An optional array of strings, or an empty array when the field is absent.</summary>
+        private static string[] Strings(JsonElement from, string key, string where)
+        {
+            if (!from.TryGetProperty(key, out var raw) || raw.ValueKind == JsonValueKind.Null)
+            {
+                return new string[0];
+            }
+
+            if (raw.ValueKind != JsonValueKind.Array)
+            {
+                throw new IOException("The mod list's " + where + " has a " + key + " that is not a list");
+            }
+
+            var values = new List<string>();
+            foreach (var entry in raw.EnumerateArray())
+            {
+                if (entry.ValueKind != JsonValueKind.String)
+                {
+                    throw new IOException("The mod list's " + where + " has a " + key + " with something other " +
+                                          "than a name in it");
+                }
+
+                var text = entry.GetString();
+                if (string.IsNullOrWhiteSpace(text) || text.Length > 200)
+                {
+                    throw new IOException("The mod list's " + where + " has a " + key + " that says nothing");
+                }
+
+                values.Add(text);
+            }
+
+            return values.ToArray();
         }
 
         /// <summary>A GitHub account or repository name: letters, digits, dot, dash, underscore.</summary>
@@ -489,11 +727,31 @@ namespace Switchboard
             return true;
         }
 
-        /// <summary>Ask GitHub for the latest release of one mod.</summary>
+        /// <summary>
+        /// Ask GitHub for the release of one mod: the pinned one when the catalogue names it,
+        /// otherwise the latest. A pin that has gone is a refusal, not a quiet fallback to a
+        /// newer release.
+        /// </summary>
         public static ReleaseInfo FetchLatest(ModSource source)
         {
-            var url = "https://api.github.com/repos/" + source.Owner + "/" + source.Repo + "/releases/latest";
-            var json = Http.GetText(url);
+            var url = source.IsPinned
+                ? "https://api.github.com/repos/" + source.Owner + "/" + source.Repo + "/releases/tags/" +
+                  Uri.EscapeDataString(source.ApprovedVersion)
+                : "https://api.github.com/repos/" + source.Owner + "/" + source.Repo + "/releases/latest";
+
+            string json;
+            try
+            {
+                json = Http.GetText(url);
+            }
+            catch (IOException ex)
+            {
+                if (!source.IsPinned) throw;
+
+                throw new IOException("the mod list lists " + source.ApprovedVersion + " of " + source.Repo +
+                                      ", and GitHub does not have that release any more. Nothing was installed. " +
+                                      ex.Message, ex);
+            }
 
             JsonDocument document;
             try
@@ -516,6 +774,14 @@ namespace Switchboard
 
                 var tag = GitHubJson.Text(root, "tag_name");
                 var page = GitHubJson.Text(root, "html_url");
+
+                // Defence in depth: the URL asked for the pinned tag, and this checks that the
+                // reply really is that release rather than something the API decided to return.
+                if (source.IsPinned && !string.Equals(tag, source.ApprovedVersion, StringComparison.Ordinal))
+                {
+                    throw new IOException("the mod list lists " + source.ApprovedVersion + " of " + source.Repo +
+                                          ", and GitHub returned " + tag + " instead. Nothing was installed");
+                }
 
                 var package = FindPackage(root);
                 if (package == null)

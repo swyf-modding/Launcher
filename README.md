@@ -488,20 +488,31 @@ at 940x640, and the answer to that is not a narrower column.
 on disk and never touches the network. This one downloads code that the game will execute, so it says
 what it is doing and asks before it does anything.
 
-**From the list.** *Refresh from GitHub* asks GitHub for the latest release of each project and shows
-the tag, the size, and whether it is already installed. *Install* downloads the release's zip, unpacks it,
-reads each file's metadata, and shows you exactly what will be written:
+**From the list.** *Refresh from GitHub* reads the catalogue, then asks GitHub for the release each entry
+names — the pinned one, when the entry pins one — and shows the tag, whether the entry is reviewed, the
+size, and whether it is already installed. *Install* downloads that release's zip, unpacks it, checks each
+file against the hash the catalogue recorded, reads each file's metadata, and shows you exactly what will
+be written:
 
 ```text
-AI Backend  v1.0.0
+AI Backend  v1.2.1
 
-  Scam WYF AI Backend  1.0.0+g2ac00c8
+From swyf-modding/AI-Backend on GitHub.
+
+Reviewed: every file below matches the hash the mod list recorded for it when
+it was listed, and the install will refuse anything that does not.
+
+  Scam WYF AI Backend  1.2.1
     -> BepInEx\plugins\ScamWYF.AiBackend.dll
-  ScamWYF.Modding.Core.dll  1.0.0+g2ac00c8
+    can use the network, can load code at runtime
+  ScamWYF.Modding.Core.dll  1.3.0+g5022e10
     -> BepInEx\core\ScamWYF.Modding.Core.dll
+    can load code at runtime, can read files, can write files
 
-Files come from ScamWYF.AiBackend-v1.0.0.zip on GitHub, 56.4 KB.
-SHA-256 22792e5162396844820a27ed9c846c20ea9f098262a92d9fa164523f2c4fada0
+Files come from ScamWYF.AiBackend-v1.2.1.zip on GitHub, 79.9 KB.
+
+GitHub's digest of the download: 4d1c...
+  (that is what the author uploaded, not a record of a review.)
 ```
 
 The version shown is read **out of each file**, not taken from the URL — that is the version that will
@@ -513,6 +524,16 @@ means editing that file rather than cutting a switchboard release. If the fetch 
 limited — the tab falls back to the list compiled into the switchboard and says so on the status line.
 Entries may point at repositories outside `swyf-modding`; those are marked with their owner in the list
 and named again in the install confirmation, because there is no shared review behind them.
+
+**What a pin means.** An entry may name the release a person reviewed (`approvedVersion`) and record the
+SHA-256 of every file and setup script in it. When it does, that is the release the switchboard installs —
+not whatever the author has published since — and each file is hashed as it is unpacked and refused if it
+does not match. The list column says `yes` for a fully pinned entry, `partly` when the release is pinned
+but something in it is not, and `no` when the entry is not pinned at all; the install confirmation says
+the same in a sentence before anything is written. A mismatch is not a warning: the install stops.
+
+This is what makes a catalogue entry a record of a review rather than a pointer to a repository. It is
+also why the tab can say a mod is reviewed at all: the claim is checkable, and the check is the hash.
 
 **Optional setup steps.** Some mods need something the download cannot do by itself — a stream mod's
 ChatBridge, which talks to Twitch and is configured per machine. A catalogue entry can name up to four
@@ -538,17 +559,29 @@ dll placed by whether it carries a `[BepInPlugin]`: with one goes to `plugins`, 
 | A file that is not a .NET assembly | Checked with Cecil, the same reader the Mods tab uses |
 | A mod with no `[BepInPlugin]` | BepInEx would not load it. The shared library is the exception, and it routes to `core` precisely so that is not a problem |
 | A download that fails its checksum | Discarded, and nothing is installed |
+| A release that is not the one the catalogue pins | The pinned release is what was reviewed. Installing a different one under the same entry would defeat the pin |
+| A file whose SHA-256 is not the one the catalogue recorded | The bytes are not the ones a person approved. Nothing is installed |
+| A setup script whose SHA-256 is not the one recorded | A script is the loudest part of an install, so it gets the same check as a dll |
+| A live catalogue that pins a release but gives a file no hash | An entry that says "reviewed" and does not say what was reviewed is not treated as reviewed |
 
 Nothing is ever **loaded** to find out what a file is — only read as metadata. A mod's static
 constructors do not run in this process.
 
 ### What the checksum is and is not
 
-GitHub publishes a SHA-256 for each release asset, and a mismatch discards the download. That catches a
-truncated or corrupted download, and an asset host that is not GitHub's.
+Two different things are checked, and they prove different things.
 
-It is **not** a signature, and it does not make a mod safe: the digest comes from the same place as the
-file. Nothing here can tell you whether a mod is malicious. The tab says so where you will read it.
+GitHub publishes a SHA-256 for each release asset, and a mismatch discards the download. That catches a
+truncated or corrupted download, and an asset host that is not GitHub's. It comes from the same place as
+the file, so it cannot tell you the file is the one anyone reviewed.
+
+The catalogue's own pins are the other check. They were written down when a person looked at the release,
+so a match means these are the bytes that were approved. That is the claim an install needs, and it is
+what the confirmation's "Reviewed:" line is reporting.
+
+Neither is a signature, and neither makes a mod safe. Nothing here can tell you whether a mod is
+malicious: a reviewed entry is one somebody looked at, which is a weaker and more honest statement than
+"verified". The tab says so where you will read it.
 
 ### Rate limits
 

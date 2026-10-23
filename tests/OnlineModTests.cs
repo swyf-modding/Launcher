@@ -24,6 +24,7 @@ namespace Switchboard.Tests
             Console.WriteLine("Live check against github.com. Requires network.");
 
             CatalogueFetch();
+            PinnedLive();
             ListingWorks();
             DownloadVerifies();
 
@@ -60,6 +61,60 @@ namespace Switchboard.Tests
                 Check("  " + source.QualifiedName + " names at least one file",
                     source.Files.Length > 0, true);
             }
+        }
+
+        /// <summary>
+        /// The pins, against the real catalogue and the real releases.
+        /// </summary>
+        /// <remarks>
+        /// This is the one test that proves the whole arrangement works end to end: a live entry
+        /// names a release, the switchboard fetches that release rather than the newest one, and the
+        /// hashes the catalogue recorded are the hashes of the files inside it. It is online-only
+        /// because it needs all three of those things to be true at once.
+        /// </remarks>
+        private static void PinnedLive()
+        {
+            Section("Live pins");
+
+            System.Collections.Generic.List<ModSource> sources;
+            try { sources = ModCatalogue.FetchCatalogue(); }
+            catch (Exception ex)
+            {
+                Check("the live list reads (" + Trim(ex.Message) + ")", false, true);
+                return;
+            }
+
+            var pinned = 0;
+            foreach (var source in sources)
+            {
+                if (!source.IsPinned) continue;
+                pinned++;
+
+                Check("  " + source.Repo + " names its release", !string.IsNullOrEmpty(source.ApprovedVersion), true);
+                Check("  " + source.Repo + " is fully pinned", source.IsVerified, true);
+
+                foreach (var file in source.Files)
+                {
+                    Check("    " + file.FileName + " has a hash", file.Sha256 != null && file.Sha256.Length == 64, true);
+                }
+
+                ReleaseInfo release;
+                try
+                {
+                    release = ModCatalogue.FetchLatest(source);
+                }
+                catch (Exception ex)
+                {
+                    Check("  " + source.Repo + " pinned release is fetchable (" + Trim(ex.Message) + ")", false, true);
+                    continue;
+                }
+
+                // The point of the pin: the newest release the author published is not what is
+                // fetched when the catalogue names an older one.
+                Check("  " + source.Repo + " fetches the pinned release", release.TagName, source.ApprovedVersion);
+            }
+
+            Check("the live list has at least one pin", pinned > 0, true);
         }
 
         private static void ListingWorks()
@@ -118,24 +173,39 @@ namespace Switchboard.Tests
         {
             Section("Real download, unpack, plan");
 
-            ReleaseInfo release = null;
-            foreach (var source in ModCatalogue.Mods)
+            // A pinned entry from the live list, so the plan's hash checks are the ones being
+            // exercised rather than skipped for want of a pin.
+            ModSource chosen = null;
+            try
             {
-                try
+                foreach (var source in ModCatalogue.FetchCatalogue())
                 {
-                    release = ModCatalogue.FetchLatest(source);
-                    if (release.Package != null) break;
-                    release = null;
-                }
-                catch (Exception)
-                {
-                    release = null;
+                    if (source.IsPinned && source.Files.Length > 0)
+                    {
+                        chosen = source;
+                        break;
+                    }
                 }
             }
-
-            if (release == null)
+            catch (Exception)
             {
-                Check("found something downloadable", false, true);
+                chosen = null;
+            }
+
+            if (chosen == null)
+            {
+                Check("found a pinned mod to download", false, true);
+                return;
+            }
+
+            ReleaseInfo release = null;
+            try
+            {
+                release = ModCatalogue.FetchLatest(chosen);
+            }
+            catch (Exception ex)
+            {
+                Check("the pinned release could be fetched (" + Trim(ex.Message) + ")", false, true);
                 return;
             }
 
@@ -161,6 +231,8 @@ namespace Switchboard.Tests
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "scamwyf-plancheck-does-not-exist"));
 
+                // A plan that returns at all means every pinned file matched: Plan refuses the
+                // release, and then the file, before it will describe them.
                 var plan = ModInstaller.Plan(release, fetched.UnpackedFolder, installed);
 
                 Check("the plan covers every file the catalogue names",
@@ -194,6 +266,8 @@ namespace Switchboard.Tests
 
                 var text = ModInstaller.Describe(plan);
                 Check("the description names the version", text.Contains(stripBuild(release.TagName)) || text.Length > 100, true);
+                Check("the description says it was reviewed", text.Contains("Reviewed:"), true);
+                Check("the description names what the files can reach", text.Contains("can "), true);
             }
             catch (Exception ex)
             {

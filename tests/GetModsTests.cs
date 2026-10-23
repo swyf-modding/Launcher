@@ -26,6 +26,8 @@ namespace Switchboard.Tests
             SizeFormatting();
             RedirectDowngradeIsRefused();
             ChecksumMismatchIsCaught();
+            PinnedEntries();
+            PinnedBytesAreChecked();
             ZipSlipIsRefused();
             ZipWithTraversalIsRefused();
             NormalZipUnpacks();
@@ -130,6 +132,193 @@ namespace Switchboard.Tests
             // A digest that is not 64 hex characters is treated as absent, not as a hash that never
             // matches - otherwise every download would fail against a malformed field.
             Check("short digest is ignored, not compared", new string('a', 10).Length == 64, false);
+        }
+
+        // ---------------------------------------------------------------- pins
+
+        /// <summary>A digest shaped like a real one, for the parsing tests.</summary>
+        private const string Hex =
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        /// <summary>The sample catalogue, pinned: a release, hashes, capabilities and a step hash.</summary>
+        private const string SamplePinnedCatalogue =
+            "{\"schemaVersion\": 1, \"mods\": [" +
+            "{\"repo\": \"AI-Backend\", \"displayName\": \"AI Backend\", \"summary\": \"Routes AI calls.\", " +
+            "\"approvedVersion\": \"v1.2.1\", " +
+            "\"files\": [{\"fileName\": \"ScamWYF.AiBackend.dll\", \"folder\": \"plugins\", " +
+            "\"expectsPluginAttribute\": true, \"sha256\": \"" + Hex + "\", " +
+            "\"capabilities\": [\"network\", \"dynamic-code\"], " +
+            "\"bepInPlugin\": [\"com.example.aibackend | AI Backend | 1.2.1\"]}], " +
+            "\"postInstall\": [{\"script\": \"setup.ps1\", \"description\": \"Sets it up.\", " +
+            "\"sha256\": \"" + Hex + "\"}]}" +
+            "]}";
+
+        /// <summary>
+        /// The pinning fields: what they mean, and what is refused.
+        /// </summary>
+        /// <remarks>
+        /// The refusals are the safety-relevant half. A pin that is present but unreadable, or an
+        /// entry that claims a release and then does not say what is in it, would otherwise be an
+        /// entry installed on a promise - so each of those rejects the file rather than being
+        /// quietly ignored or downgraded to an unpinned entry.
+        /// </remarks>
+        private static void PinnedEntries()
+        {
+            Section("Pinned entries");
+
+            var pinned = ModCatalogue.ParseCatalogue(SamplePinnedCatalogue);
+            Check("reads the pinned release", pinned[0].ApprovedVersion, "v1.2.1");
+            Check("a pinned entry says so", pinned[0].IsPinned, true);
+            Check("a fully pinned entry is verified", pinned[0].IsVerified, true);
+            Check("reads a file's hash", pinned[0].Files[0].Sha256, Hex);
+            Check("the file says it is pinned", pinned[0].Files[0].IsPinned, true);
+            Check("reads the capabilities", pinned[0].Files[0].Capabilities.Length, 2);
+            Check("reads the plugin declaration", pinned[0].Files[0].BepInPlugin[0],
+                "com.example.aibackend | AI Backend | 1.2.1");
+            Check("reads the setup script's hash", pinned[0].PostInstall[0].Sha256, Hex);
+            Check("the script says it is pinned", pinned[0].PostInstall[0].IsPinned, true);
+
+            var plain = ModCatalogue.ParseCatalogue(SampleCatalogue);
+            Check("an entry with no release is not pinned", plain[0].IsPinned, false);
+            Check("an entry with no release is not verified", plain[0].IsVerified, false);
+            Check("an entry with no release has no capabilities", plain[0].Files[0].Capabilities.Length, 0);
+
+            Throws("a pinned entry whose file has no hash is refused",
+                () => ModCatalogue.ParseCatalogue(PinnedWithout("\"sha256\": \"" + Hex + "\", ")));
+            Throws("a pinned entry whose file hash is malformed is refused",
+                () => ModCatalogue.ParseCatalogue(PinnedWith("\"" + Hex + "\"", "\"abc\"")));
+            Throws("a pinned entry whose script has no hash is refused",
+                () => ModCatalogue.ParseCatalogue(
+                    PinnedWith("\"description\": \"Sets it up.\", \"sha256\": \"" + Hex + "\"",
+                               "\"description\": \"Sets it up.\"")));
+            Throws("a capability nobody can produce is refused",
+                () => ModCatalogue.ParseCatalogue(PinnedWith("\"network\"", "\"telepathy\"")));
+            Throws("a capability list that is not a list is refused",
+                () => ModCatalogue.ParseCatalogue(PinnedWith("[\"network\", \"dynamic-code\"]",
+                                                             "\"network\"")));
+
+            Check("process is explained", ModCatalogue.DescribeCapability("process"),
+                "can start other programs");
+            Check("network is explained", ModCatalogue.DescribeCapability("network"), "can use the network");
+            Check("a file's capabilities become one phrase",
+                ModCatalogue.DescribeCapabilities(pinned[0].Files[0]),
+                "can use the network, can load code at runtime");
+            Check("a file with no capabilities says nothing",
+                ModCatalogue.DescribeCapabilities(plain[0].Files[0]), null);
+        }
+
+        /// <summary>The pinned sample with one piece of text replaced.</summary>
+        private static string PinnedWith(string from, string to)
+        {
+            return SamplePinnedCatalogue.Replace(from, to);
+        }
+
+        /// <summary>The pinned sample with one piece of text removed.</summary>
+        private static string PinnedWithout(string text)
+        {
+            return SamplePinnedCatalogue.Replace(text, "");
+        }
+
+        /// <summary>
+        /// The install path's hash checks: a file that is not the pinned one is refused, and the
+        /// release has to be the one the catalogue lists.
+        /// </summary>
+        /// <remarks>
+        /// This is the check the catalogue arrangement exists to make possible. GitHub's digest comes
+        /// from the same place as the file, so it catches a mangled download and nothing else; these
+        /// hashes were written down at review time, so a match means the bytes are the ones somebody
+        /// approved. A mismatch must stop the plan, not warn and continue.
+        /// </remarks>
+        private static void PinnedBytesAreChecked()
+        {
+            Section("Pinned bytes");
+
+            var folder = Temp("pinned");
+            try
+            {
+                // A known digest, so the test is of the hashing rather than of itself.
+                var path = Path.Combine(folder, "hello.dll");
+                File.WriteAllText(path, "hello");
+                Check("hashing a file gives its sha256", ModInstaller.Sha256Of(path),
+                    "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+
+                // A real assembly, so a plan that gets past the hash check gets past the scan too.
+                var assembly = typeof(GetModsTests).Assembly.Location;
+                File.Copy(assembly, Path.Combine(folder, "Thing.dll"), true);
+                var actual = ModInstaller.Sha256Of(Path.Combine(folder, "Thing.dll"));
+
+                var install = GameInstall.Resolve(Path.Combine(folder, "game"));
+                var asset = new ReleaseAsset("Thing.zip", 1024, "https://github.com/x/y/Thing.zip", null);
+
+                // The wrong bytes.
+                var wrong = new ModSource("Thing", "Thing", "A thing.",
+                    new[] { new ModFile("Thing.dll", ModFolder.Plugins, true, new string('a', 64)) });
+                var wrongRelease = new ReleaseInfo(wrong, "v1.0.0", "https://github.com/x/y", asset);
+                Throws("a file that is not the pinned one is refused",
+                    () => ModInstaller.Plan(wrongRelease, folder, install));
+
+                // The right bytes, and the plan moves on to the next reason it might refuse.
+                var right = new ModSource("Thing", "Thing", "A thing.",
+                    new[] { new ModFile("Thing.dll", ModFolder.Plugins, true, actual) });
+                var rightRelease = new ReleaseInfo(right, "v1.0.0", "https://github.com/x/y", asset);
+
+                string message = null;
+                try { ModInstaller.Plan(rightRelease, folder, install); }
+                catch (Exception ex) { message = ex.Message; }
+
+                Check("a matching hash gets past the hash check",
+                    message == null || message.IndexOf("does not match the hash", StringComparison.Ordinal) < 0,
+                    true);
+
+                // A different release under a pinned entry's name.
+                var pinnedSource = new ModSource("Thing", "Thing", "A thing.",
+                    new[] { new ModFile("Thing.dll", ModFolder.Plugins, true, actual) },
+                    ModCatalogue.DefaultOwner, null, "v1.0.0");
+                var otherRelease = new ReleaseInfo(pinnedSource, "v1.1.0", "https://github.com/x/y", asset);
+                Throws("a pinned entry refuses a release that is not the pinned one",
+                    () => ModInstaller.Plan(otherRelease, folder, install));
+
+                // A setup script that is not the pinned one.
+                var scriptPath = Path.Combine(folder, "setup.ps1");
+                File.WriteAllText(scriptPath, "Write-Host hello");
+                var scriptHash = ModInstaller.Sha256Of(scriptPath);
+
+                var badScript = new ModSource("Thing", "Thing", "A thing.",
+                    new[] { new ModFile("Thing.dll", ModFolder.Plugins, false) },
+                    ModCatalogue.DefaultOwner,
+                    new[] { new PostInstallStep("setup.ps1", "Does it.", new string('b', 64)) });
+                var badScriptRelease = new ReleaseInfo(badScript, "v1.0.0", "https://github.com/x/y", asset);
+                Throws("a setup script that is not the pinned one is refused",
+                    () => ModInstaller.Plan(badScriptRelease, folder, install));
+
+                var goodScript = new ModSource("Thing", "Thing", "A thing.",
+                    new[] { new ModFile("Thing.dll", ModFolder.Plugins, false) },
+                    ModCatalogue.DefaultOwner,
+                    new[] { new PostInstallStep("setup.ps1", "Does it.", scriptHash) });
+                var goodScriptRelease = new ReleaseInfo(goodScript, "v1.0.0", "https://github.com/x/y", asset);
+
+                var plan = ModInstaller.Plan(goodScriptRelease, folder, install);
+                Check("a matching script hash reaches the prompt", plan.Scripts.Count, 1);
+                Check("and the step still says it is pinned", plan.Scripts[0].IsPinned, true);
+
+                // The confirmation says which of the two this is, before anything is agreed to.
+                var text = ModInstaller.Describe(plan);
+                Check("the confirmation says it is not a reviewed entry", text.Contains("Not reviewed"), true);
+
+                var verified = new ModSource("Thing", "Thing", "A thing.",
+                    new[] { new ModFile("Thing.dll", ModFolder.Plugins, false, actual) },
+                    ModCatalogue.DefaultOwner,
+                    new[] { new PostInstallStep("setup.ps1", "Does it.", scriptHash) },
+                    "v1.0.0");
+                var verifiedRelease = new ReleaseInfo(verified, "v1.0.0", "https://github.com/x/y", asset);
+                var verifiedPlan = ModInstaller.Plan(verifiedRelease, folder, install);
+                var verifiedText = ModInstaller.Describe(verifiedPlan);
+                Check("the confirmation says it is reviewed", verifiedText.Contains("Reviewed:"), true);
+            }
+            finally
+            {
+                ModInstaller.Discard(folder);
+            }
         }
 
         // ---------------------------------------------------------------- archive handling
@@ -583,7 +772,7 @@ namespace Switchboard.Tests
             return new ModSource("Stream-Mod", "Stream Mod", "Streams.",
                 new[] { new ModFile("ScamWYF.Modding.Core.dll", ModFolder.Core, false) },
                 "swyf-modding",
-                new[] { new PostInstallStep("setup-chatbridge.ps1", "Configures ChatBridge.") });
+                new[] { new PostInstallStep("setup-chatbridge.ps1", "Configures ChatBridge.", null) });
         }
 
         // ---------------------------------------------------------------- helpers
