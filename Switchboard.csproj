@@ -22,6 +22,14 @@
     <AssemblyName>Switchboard</AssemblyName>
     <RootNamespace>Switchboard</RootNamespace>
 
+    <!--
+      The switchboard's own icon: the gold S-switch on its wooden tile. The .ico is the
+      executable's icon as Explorer and the taskbar show it; the png beside it is the
+      WindowIcon every window is given, because Avalonia decodes png on every platform.
+      Same drawing as the site's favicon.
+    -->
+    <ApplicationIcon>src/assets/switchboard.ico</ApplicationIcon>
+
     <!-- Bindings are the reflection kind, not compiled: the row types are internal and the views bind
          to plain properties. Compiled bindings would need an x:DataType on every template. -->
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
@@ -87,6 +95,15 @@
       <Link>fonts\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </AvaloniaResource>
     <None Remove="src/fonts/**/*.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The window icon. Linked to a fixed avares path, so the markup names the same thing
+         however the source tree is laid out. -->
+    <AvaloniaResource Include="src/assets/switchboard.png">
+      <Link>assets/switchboard.png</Link>
+    </AvaloniaResource>
+    <None Remove="src/assets/switchboard.png" />
   </ItemGroup>
 
   <ItemGroup>

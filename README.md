@@ -408,6 +408,7 @@ src/
 |-- UpdateChecker.cs   Is a newer switchboard released? - the tag comparison behind the update bar
 |-- SelfUpdate.cs     Replacing this program with a newer one: the download, the checksum, the script
 |-- ScriptRunner.cs    Running a mod's optional post-install script, and collecting what it prints
+|-- assets/            The icon: executable and window, from the same drawing as the site's favicon
 `-- views/
     |-- SetupView      The Setup tab
     |-- ModsView       The Mods tab

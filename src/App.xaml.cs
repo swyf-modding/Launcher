@@ -3,6 +3,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Threading;
 
 namespace Switchboard
@@ -21,6 +23,42 @@ namespace Switchboard
     /// </remarks>
     public partial class App : Application
     {
+        /// <summary>Where the window icon lives inside the assembly.</summary>
+        private const string IconUri = "avares://Switchboard/assets/switchboard.png";
+
+        /// <summary>
+        /// The switchboard's icon, decoded once, from the same drawing as the site's favicon.
+        /// </summary>
+        /// <remarks>
+        /// The main window and the config editor name the asset directly in their markup. This is
+        /// for the dialogs, which are built in code: they show for a moment, so decoding a 5 KB png
+        /// for each one is not worth it - the bitmap is loaded once and every icon shares it.
+        /// </remarks>
+        private static readonly Bitmap IconBitmap = LoadIconBitmap();
+
+        /// <summary>A window icon for a window built in code, or null when the asset is missing.</summary>
+        internal static WindowIcon NewWindowIcon()
+        {
+            return IconBitmap == null ? null : new WindowIcon(IconBitmap);
+        }
+
+        private static Bitmap LoadIconBitmap()
+        {
+            try
+            {
+                using (var stream = AssetLoader.Open(new Uri(IconUri)))
+                {
+                    return new Bitmap(stream);
+                }
+            }
+            catch (Exception)
+            {
+                // A missing icon is not worth failing a launch over. The window simply shows
+                // whatever the platform would have shown.
+                return null;
+            }
+        }
+
         public override void Initialize()
         {
             AvaloniaXamlLoader.Load(this);

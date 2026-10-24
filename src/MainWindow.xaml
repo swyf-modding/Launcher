@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:Switchboard.Views"
         Title="Scam With Your Friends"
+        Icon="avares://Switchboard/assets/switchboard.png"
         Width="1060" Height="720" MinWidth="940" MinHeight="620"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource WindowGlowBrush}"

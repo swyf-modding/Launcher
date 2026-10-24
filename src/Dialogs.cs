@@ -79,6 +79,7 @@ namespace Switchboard
             var window = new Window
             {
                 Title = title,
+                Icon = App.NewWindowIcon(),
                 Width = 520,
                 SizeToContent = SizeToContent.Height,
                 MinHeight = 170,
