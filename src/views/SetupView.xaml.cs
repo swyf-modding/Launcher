@@ -13,11 +13,17 @@ namespace Switchboard.Views
     internal sealed class CheckRow
     {
         public CheckRow(string name, bool ok, string detail)
+            : this(name, ok ? "ok" : "missing", detail, ok ? Palette.Text : Palette.Bad)
+        {
+        }
+
+        /// <summary>A row whose state is neither ok nor missing, such as a stale override.</summary>
+        public CheckRow(string name, string state, string detail, string brushKey)
         {
             Name = name;
-            State = ok ? "ok" : "missing";
+            State = state;
             Detail = detail ?? "";
-            Brush = Palette.Brush(ok ? Palette.Text : Palette.Bad);
+            Brush = Palette.Brush(brushKey);
         }
 
         public string Name { get; private set; }
@@ -68,10 +74,26 @@ namespace Switchboard.Views
                 install.HasGame ? install.ManagedFolder : "not found - check the path above"));
             _rows.Add(new CheckRow("Loader (Doorstop)", install.HasDoorstop,
                 install.HasDoorstop ? "winhttp.dll present" : "the loader half, which starts everything"));
-            _rows.Add(new CheckRow("Corlib override", install.HasCorlibOverride,
-                install.HasCorlibOverride
-                    ? "unstripped_corlib seeded"
-                    : "required: the shipped mscorlib is stripped, and the loader cannot start without this"));
+            // The folder existing is not the same as the folder being current. Setup records which
+            // patched copies came from the game's own assemblies, and a game update leaves those
+            // copies behind while Managed\ moves on. Doorstop loads the override first, so a stale
+            // copy is the difference between "seeded" and "boots".
+            var stale = install.StaleOverrides;
+            if (!install.HasCorlibOverride)
+            {
+                _rows.Add(new CheckRow("Corlib override", false,
+                    "required: the shipped mscorlib is stripped, and the loader cannot start without this"));
+            }
+            else if (stale.Count == 0)
+            {
+                _rows.Add(new CheckRow("Corlib override", true, "unstripped_corlib seeded and current"));
+            }
+            else
+            {
+                _rows.Add(new CheckRow("Corlib override", "stale",
+                    "built from an older game build: " + string.Join(", ", stale) + " - run Set up / repair",
+                    Palette.Warn));
+            }
             _rows.Add(new CheckRow("Override wired up", install.DoorstopPointsAtOverride,
                 install.DoorstopPointsAtOverride
                     ? "doorstop_config.ini points at it"
