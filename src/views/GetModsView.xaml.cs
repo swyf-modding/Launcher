@@ -97,6 +97,9 @@ namespace Switchboard.Views
         private readonly ObservableCollection<ReleaseRow> _rows = new ObservableCollection<ReleaseRow>();
         private volatile bool _busy;
 
+        private string _pendingOwner;
+        private string _pendingRepo;
+
         public GetModsView()
         {
             InitializeComponent();
@@ -164,7 +167,85 @@ namespace Switchboard.Views
 
         public void OnTabShown()
         {
+            if (_pendingOwner != null && _rows.Count > 0 && !_busy)
+            {
+                TryStartPendingInstall();
+                return;
+            }
+
             if (_rows.Count == 0 && !_busy) CheckForUpdates();
+        }
+
+        /// <summary>
+        /// Install one catalogue mod, as asked by the website's install button.
+        /// </summary>
+        /// <remarks>
+        /// The catalogue has to be read before the row exists, so a request that arrives
+        /// before the list does is kept and started when the lookup lands. When the list
+        /// is already here the install starts at once. Either way it is the normal
+        /// InstallSelected path: same confirmation, same checks, no shortcut.
+        /// </remarks>
+        public void RequestInstall(string owner, string repo)
+        {
+            owner = (owner ?? "").Trim();
+            repo = (repo ?? "").Trim();
+
+            if (owner.Length == 0 || repo.Length == 0) return;
+
+            _pendingOwner = owner;
+            _pendingRepo = repo;
+
+            if (Host == null || !Host.Install.HasBepInEx)
+            {
+                var missed = _pendingOwner + "/" + _pendingRepo;
+                _pendingOwner = null;
+                _pendingRepo = null;
+                Failed("No BepInEx install found, so " + missed + " has nowhere to go yet. Run the Setup tab first, then try the install button again.");
+                return;
+            }
+
+            if (_busy) return;
+
+            if (_rows.Count == 0)
+            {
+                CheckForUpdates();
+                return;
+            }
+
+            TryStartPendingInstall();
+        }
+
+        private void TryStartPendingInstall()
+        {
+            var owner = _pendingOwner;
+            var repo = _pendingRepo;
+            if (owner == null || repo == null) return;
+
+            ReleaseRow match = null;
+            foreach (var row in _rows)
+            {
+                if (string.Equals(row.Release.Source.Owner, owner, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(row.Release.Source.Repo, repo, StringComparison.OrdinalIgnoreCase))
+                {
+                    match = row;
+                    break;
+                }
+            }
+
+            if (match == null)
+            {
+                _pendingOwner = null;
+                _pendingRepo = null;
+                Failed(owner + "/" + repo + " is not in the catalogue this Switchboard is showing. It may have been renamed or removed.");
+                return;
+            }
+
+            _pendingOwner = null;
+            _pendingRepo = null;
+
+            List.SelectedItem = match;
+            UpdateButtons();
+            InstallSelected();
         }
 
         private void UpdateButtons()
@@ -297,6 +378,10 @@ namespace Switchboard.Views
                     }
 
                     UpdateButtons();
+
+                    // A website request that arrived before the list did starts now that
+                    // the rows exist. Inside the same UI turn, so no second refresh.
+                    if (_pendingOwner != null) TryStartPendingInstall();
                 });
             });
         }

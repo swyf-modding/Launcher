@@ -48,11 +48,32 @@ namespace Switchboard
         private SwitchboardRelease _latestRelease;
         private volatile bool _checkingUpdates;
 
+        private InstallRequest _launchRequest;
+        private FileSystemWatcher _pendingWatcher;
+
         public MainWindow(string[] args)
         {
             InitializeComponent();
 
-            var explicitPath = args != null && args.Length > 0 ? args[0] : null;
+            // The first argument used to always be a game path. A protocol launch carries
+            // switchboard://install?owner=X&repo=Y instead, which is a request and not a
+            // folder, so it is kept aside and never passed to the install resolver.
+            InstallRequest launchRequest;
+            InstallRequest.TryFind(args, out launchRequest);
+            _launchRequest = launchRequest;
+
+            string explicitPath = null;
+            if (args != null)
+            {
+                foreach (var arg in args)
+                {
+                    InstallRequest ignored;
+                    if (InstallRequest.TryParse(arg, out ignored)) continue;
+                    if (arg.StartsWith("--")) continue;
+                    explicitPath = arg;
+                    break;
+                }
+            }
 
             Install = GameInstall.Resolve(explicitPath);
             Mods = new ModManager(Install.BepInExCore);
@@ -116,6 +137,95 @@ namespace Switchboard
             ModsPage.Reload();
 
             CheckForSwitchboardUpdate(true);
+
+            try { ProtocolHandler.EnsureRegistered(); }
+            catch (Exception) { }
+
+            WatchPendingInstalls();
+            DrainPendingInstalls();
+            HandleLaunchRequest();
+        }
+
+        /// <summary>
+        /// The website's install button when it arrived with this launch.
+        /// </summary>
+        private void HandleLaunchRequest()
+        {
+            var request = _launchRequest;
+            _launchRequest = null;
+
+            if (request == null) return;
+            ShowGetModsAndInstall(request);
+        }
+
+        /// <summary>
+        /// Pick up requests a second process left while this window was open.
+        /// </summary>
+        private void WatchPendingInstalls()
+        {
+            try
+            {
+                var folder = PendingInstalls.Folder;
+                System.IO.Directory.CreateDirectory(folder);
+
+                _pendingWatcher = new FileSystemWatcher(folder, "*.req");
+                _pendingWatcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.CreationTime;
+                _pendingWatcher.Created += delegate (object sender, FileSystemEventArgs e)
+                {
+                    // The writer may still hold the file, so wait a beat before reading.
+                    Thread.Sleep(250);
+                    OnUi(delegate { DrainPendingInstalls(); });
+                };
+                _pendingWatcher.EnableRaisingEvents = true;
+            }
+            catch (Exception)
+            {
+                // Best effort. Clicks that arrive with this launch are still handled.
+            }
+        }
+
+        private void DrainPendingInstalls()
+        {
+            var requests = PendingInstalls.TakeRequests();
+            if (requests == null || requests.Count == 0) return;
+
+            foreach (var request in requests)
+            {
+                ShowGetModsAndInstall(request);
+                break;
+            }
+
+            // One install at a time: anything beyond the first waits as a fresh file,
+            // because TakeRequests already cleared the folder.
+            for (var i = 1; i < requests.Count; i++)
+            {
+                PendingInstalls.WriteRequest(requests[i]);
+            }
+        }
+
+        /// <summary>
+        /// Open the Get mods tab and start the normal install for one catalogue mod.
+        /// </summary>
+        /// <remarks>
+        /// No separate path: the tab checks the catalogue, shows the confirmation and
+        /// applies it, exactly as a hand-picked row would. The tab switch comes first so
+        /// the person sees where the install is happening rather than a window that
+        /// seems to do nothing until a dialog appears.
+        /// </remarks>
+        public void ShowGetModsAndInstall(InstallRequest request)
+        {
+            if (request == null) return;
+
+            try { Tabs.SelectedIndex = 2; }
+            catch (Exception) { }
+
+            _lastShownTab = 2;
+            ShowTab(2);
+
+            try { Activate(); }
+            catch (Exception) { }
+
+            GetModsPage.RequestInstall(request.Owner, request.Repo);
         }
 
 

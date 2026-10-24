@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using Avalonia;
 using Avalonia.Media;
 
@@ -19,9 +20,33 @@ namespace Switchboard
     /// </remarks>
     internal static class Program
     {
+        private static Mutex _singleInstance;
+
         [STAThread]
         public static void Main(string[] args)
         {
+            // A protocol click starts a second process even when the app is open. Hand the
+            // request to the window that is already there instead of opening another one.
+            // Launches without a request keep the old behaviour and open as normal. The
+            // mutex is held by every first window no matter how it was launched, so a
+            // later click can always tell one is already there.
+            bool createdNew = true;
+            try
+            {
+                _singleInstance = new Mutex(true, "SwitchboardSingleInstance", out createdNew);
+            }
+            catch (Exception)
+            {
+                createdNew = true;
+            }
+
+            InstallRequest request;
+            if (!createdNew && InstallRequest.TryFind(args, out request))
+            {
+                PendingInstalls.WriteRequest(request);
+                return;
+            }
+
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         }
 

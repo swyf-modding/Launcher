@@ -40,6 +40,7 @@ namespace Switchboard.Tests
             PostInstallRules();
             BepInExVersionRules();
             SwitchboardUpdateRules();
+            InstallRequestRules();
             ModConfigFiles();
 
             Console.WriteLine();
@@ -1075,6 +1076,41 @@ namespace Switchboard.Tests
         {
             Check("'" + current + "' is not told about '" + latest + "'",
                 UpdateChecker.IsUpdateAvailable(current, latest), false);
+        }
+
+        // ---------------------------------------------------------------- install requests
+
+        /// <summary>
+        /// The website's switchboard:// links: parsing and the handoff to a running instance.
+        /// </summary>
+        private static void InstallRequestRules()
+        {
+            Section("Install requests");
+
+            InstallRequest parsed;
+            Check("parses the query shape",
+                InstallRequest.TryParse("switchboard://install?owner=swyf-modding&repo=Mod-Handler", out parsed)
+                && parsed.Owner == "swyf-modding" && parsed.Repo == "Mod-Handler", true);
+
+            Check("parses the path shape",
+                InstallRequest.TryParse("switchboard://install/swyf-modding/Mod-Handler", out parsed)
+                && parsed.Owner == "swyf-modding" && parsed.Repo == "Mod-Handler", true);
+
+            Check("finds the request anywhere in the args",
+                InstallRequest.TryFind(new[] { "C:\\Games\\SWYF", "switchboard://install?owner=a&repo=b" }, out parsed)
+                && parsed.Owner == "a" && parsed.Repo == "b", true);
+
+            Check("a game folder is not a request",
+                InstallRequest.TryFind(new[] { "C:\\Games\\SWYF" }, out parsed), false);
+
+            Check("refuses a missing repo",
+                InstallRequest.TryParse("switchboard://install?owner=a", out parsed), false);
+
+            Check("refuses a bad owner",
+                InstallRequest.TryParse("switchboard://install?owner=a/b&repo=c", out parsed), false);
+
+            Check("refuses another scheme",
+                InstallRequest.TryParse("https://example.com/install?owner=a&repo=b", out parsed), false);
         }
 
         private static void Section(string name)
