@@ -21,7 +21,7 @@ env:
   # The Setup commit the switchboard is compiled against. A tag, not a branch: the point of building from a
   # tag here is reproducibility, and a moving branch is the opposite of that. ci.yml pins the same value,
   # so a bump is exercised by a normal push before any release depends on it.
-  SETUP_REF: v1.0.2
+  SETUP_REF: v1.0.3
 
 on:
   push:

@@ -18,7 +18,7 @@ env:
   # The Setup commit the switchboard is compiled against. A tag, not a branch, so a release is
   # reproducible: "whatever Setup's main pointed at this morning" is not a release input. Bump it when a
   # Setup change should reach users; release.yml pins the same value.
-  SETUP_REF: v1.0.2
+  SETUP_REF: v1.0.3
 
 on:
   push:
