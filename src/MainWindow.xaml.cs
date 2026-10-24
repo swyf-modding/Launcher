@@ -212,7 +212,7 @@ namespace Switchboard
         /// the person sees where the install is happening rather than a window that
         /// seems to do nothing until a dialog appears.
         /// </remarks>
-        public void ShowGetModsAndInstall(InstallRequest request)
+        internal void ShowGetModsAndInstall(InstallRequest request)
         {
             if (request == null) return;
 
